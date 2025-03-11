@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "homepage": "https://[你的GitHub用户名].github.io/carbon-app",
+  "homepage": "https://zypgo.github.io/carbon-app",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

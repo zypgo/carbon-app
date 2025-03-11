@@ -20,20 +20,20 @@
 
 ## 步骤2：关联本地仓库与GitHub仓库
 
-在终端中执行以下命令（请替换[你的GitHub用户名]为您的实际GitHub用户名）：
+在终端中执行以下命令：
 
 ```bash
-git remote add origin https://github.com/[你的GitHub用户名]/carbon-app.git
+git remote add origin https://github.com/zypgo/carbon-app.git
 git branch -M main
 git push -u origin main
 ```
 
 ## 步骤3：修改package.json中的homepage字段
 
-编辑package.json文件，将homepage字段中的[你的GitHub用户名]替换为您的实际GitHub用户名：
+编辑package.json文件，确保homepage字段正确设置：
 
 ```json
-"homepage": "https://[你的GitHub用户名].github.io/carbon-app",
+"homepage": "https://zypgo.github.io/carbon-app",
 ```
 
 ## 步骤4：部署到GitHub Pages
@@ -61,7 +61,7 @@ npm run deploy
 部署完成后，您可以通过以下URL访问您的网站：
 
 ```
-https://[你的GitHub用户名].github.io/carbon-app/
+https://zypgo.github.io/carbon-app/
 ```
 
 部署可能需要几分钟时间才能生效。
