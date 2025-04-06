@@ -3,23 +3,28 @@ import { Link as RouterLink, useLocation } from 'react-router-dom'
 import {
   Box, Flex, HStack, Button, Text, useColorModeValue,
   Menu, MenuButton, MenuList, MenuItem, Select,
-  Avatar
+  Badge, Tooltip
 } from '@chakra-ui/react'
-import { ChevronDownIcon, RepeatIcon } from '@chakra-ui/icons'
-import { useWeb3 } from '../contexts/Web3Context'
+import { ChevronDownIcon, RepeatIcon, InfoIcon } from '@chakra-ui/icons'
+import { useWeb3, UserRole } from '../contexts/Web3Context'
 import { useLanguage, Language } from '../contexts/LanguageContext'
 
-interface NavigationProps {
-  account: string | null
-  connectWallet: () => void
-  isConnecting: boolean
-  resetConnection?: () => void
-}
-
-const Navigation = ({ account, connectWallet, isConnecting, resetConnection }: NavigationProps) => {
+const Navigation = () => {
   const location = useLocation()
   const [connectionAttempts, setConnectionAttempts] = useState(0)
   const { language, setLanguage, t } = useLanguage()
+  
+  const { 
+    account, 
+    connectWallet, 
+    isConnecting, 
+    resetConnection, 
+    chainId,
+    userRole,
+    switchRole,
+    isVerifier,
+    verifierAddress
+  } = useWeb3()
   
   const bg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -43,6 +48,82 @@ const Navigation = ({ account, connectWallet, isConnecting, resetConnection }: N
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setLanguage(e.target.value as Language)
   }
+
+  // 获取用户角色名称
+  const getRoleName = (role: UserRole) => {
+    switch(role) {
+      case UserRole.Verifier:
+        return t('role.verifier') || '审核者';
+      case UserRole.User:
+      default:
+        return t('role.user') || '用户';
+    }
+  }
+
+  // 获取角色颜色
+  const getRoleColor = (role: UserRole) => {
+    switch(role) {
+      case UserRole.Verifier:
+        return 'blue';
+      case UserRole.User:
+      default:
+        return 'green';
+    }
+  }
+
+  // 获取网络名称
+  const getNetworkName = (id: number | null | undefined) => {
+    if (!id) return '未知网络';
+    
+    switch (id) {
+      case 1: return 'Ethereum Mainnet';
+      case 5: return 'Goerli Testnet';
+      case 11155111: return 'Sepolia Testnet';
+      case 137: return 'Polygon Mainnet';
+      case 80001: return 'Mumbai Testnet';
+      case 56: return 'BSC Mainnet';
+      case 97: return 'BSC Testnet';
+      case 31337: return 'Localhost';
+      case 1337: return 'Localhost';
+      default: return `Chain ID: ${id}`;
+    }
+  }
+
+  // 获取网络颜色
+  const getNetworkColor = (id: number | null | undefined) => {
+    if (!id) return 'gray';
+    
+    switch (id) {
+      case 1: return 'blue'; // Ethereum Mainnet
+      case 5: return 'yellow'; // Goerli
+      case 11155111: return 'purple'; // Sepolia
+      case 137: return 'purple'; // Polygon
+      case 80001: return 'pink'; // Mumbai
+      case 56: return 'yellow'; // BSC
+      case 97: return 'orange'; // BSC Testnet
+      case 31337: case 1337: return 'green'; // Localhost
+      default: return 'gray';
+    }
+  }
+
+  // 处理角色切换
+  const handleRoleSwitch = (role: UserRole) => {
+    if (switchRole) {
+      switchRole(role);
+    }
+  }
+
+  // 检查是否是验证者地址
+  const isVerifierAddress = account && verifierAddress && 
+    account.toLowerCase() === verifierAddress.toLowerCase();
+
+  console.log('Navigation render:', { 
+    account, 
+    verifierAddress, 
+    isVerifierAddress, 
+    userRole, 
+    isVerifier 
+  });
 
   return (
     <Box
@@ -81,6 +162,59 @@ const Navigation = ({ account, connectWallet, isConnecting, resetConnection }: N
         </HStack>
 
         <Flex alignItems="center" gap={4}>
+          {/* 显示网络状态 */}
+          {account && (
+            <Tooltip label="当前连接的区块链网络">
+              <Badge 
+                colorScheme={getNetworkColor(chainId)}
+                px={2}
+                py={1}
+                borderRadius="full"
+                fontSize="xs"
+              >
+                {getNetworkName(chainId)}
+              </Badge>
+            </Tooltip>
+          )}
+          
+          {/* 显示用户角色 */}
+          {account && (
+            <Tooltip label="当前用户角色">
+              <Badge 
+                colorScheme={getRoleColor(userRole)}
+                px={2}
+                py={1}
+                borderRadius="full"
+                fontSize="xs"
+              >
+                {getRoleName(userRole)}
+              </Badge>
+            </Tooltip>
+          )}
+          
+          {/* 角色切换菜单 - 仅对验证者地址显示 */}
+          {account && isVerifierAddress && (
+            <Menu>
+              <MenuButton
+                as={Button}
+                size="sm"
+                rightIcon={<ChevronDownIcon />}
+                colorScheme="teal"
+                variant="outline"
+              >
+                {t('role.switch') || '切换角色'}
+              </MenuButton>
+              <MenuList>
+                <MenuItem onClick={() => handleRoleSwitch(UserRole.Verifier)}>
+                  {t('role.verifier') || '审核者'}
+                </MenuItem>
+                <MenuItem onClick={() => handleRoleSwitch(UserRole.User)}>
+                  {t('role.user') || '普通用户'}
+                </MenuItem>
+              </MenuList>
+            </Menu>
+          )}
+          
           {/* 语言切换 */}
           <Select 
             value={language} 

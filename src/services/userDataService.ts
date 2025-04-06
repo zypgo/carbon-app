@@ -7,6 +7,9 @@ export interface Transaction {
   price: number
   date: string
   counterparty: string
+  txHash?: string
+  status?: 'pending' | 'confirmed' | 'failed'
+  blockNumber?: number
 }
 
 export interface UserData {
@@ -46,7 +49,12 @@ export const saveUserData = (account: string, data: UserData): void => {
   if (!account) return
   
   const storageKey = `userData_${account}`
-  localStorage.setItem(storageKey, JSON.stringify(data))
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(data))
+    console.log(`成功保存用户数据到 ${storageKey}:`, data)
+  } catch (error) {
+    console.error('保存用户数据失败:', error)
+  }
 }
 
 // 记录交易
@@ -55,9 +63,14 @@ export const recordTransaction = (
   type: 'buy' | 'sell',
   amount: number,
   price: number,
-  counterparty: string
+  counterparty: string,
+  txHash?: string,
+  blockNumber?: number,
+  status: 'pending' | 'confirmed' | 'failed' = 'confirmed'
 ): void => {
   if (!account) return
+  
+  console.log(`正在记录${type}交易:`, { account, amount, price, counterparty, txHash, status })
   
   const userData = getUserData(account)
   
@@ -67,8 +80,11 @@ export const recordTransaction = (
     type,
     amount,
     price,
-    date: new Date().toISOString().split('T')[0],
-    counterparty
+    date: new Date().toISOString(),
+    counterparty,
+    txHash,
+    status,
+    blockNumber
   }
   
   // 更新余额
@@ -83,16 +99,44 @@ export const recordTransaction = (
   
   // 保存更新后的数据
   saveUserData(account, userData)
+  
+  console.log(`交易记录已保存，新余额：${userData.balance}`)
 }
 
 // 获取用户余额
 export const getUserBalance = (account: string): number => {
   if (!account) return 0
-  return getUserData(account).balance
+  const userData = getUserData(account)
+  console.log(`获取用户余额: ${userData.balance}`)
+  return userData.balance
 }
 
 // 获取用户交易历史
 export const getUserTransactions = (account: string): Transaction[] => {
   if (!account) return []
-  return getUserData(account).transactions
-} 
+  const transactions = getUserData(account).transactions
+  console.log(`获取用户交易历史: ${transactions.length}条记录`)
+  return transactions
+}
+
+// 更新交易状态
+export const updateTransactionStatus = (
+  account: string,
+  transactionId: string,
+  status: 'pending' | 'confirmed' | 'failed',
+  blockNumber?: number
+): void => {
+  if (!account) return
+  
+  const userData = getUserData(account)
+  
+  const updatedTransactions = userData.transactions.map(tx => {
+    if (tx.id === transactionId) {
+      return { ...tx, status, blockNumber }
+    }
+    return tx
+  })
+  
+  userData.transactions = updatedTransactions
+  saveUserData(account, userData)
+}

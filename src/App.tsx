@@ -10,17 +10,10 @@ import Projects from './pages/Projects'
 import Profile from './pages/Profile'
 
 function App() {
-  const { account, connectWallet, isConnecting, resetConnection } = useWeb3()
-
   return (
     <LanguageProvider>
       <Box minH="100vh">
-        <Navigation 
-          account={account} 
-          connectWallet={connectWallet} 
-          isConnecting={isConnecting} 
-          resetConnection={resetConnection}
-        />
+        <Navigation />
         <Box as="main">
           <Routes>
             <Route path="/" element={<Home />} />

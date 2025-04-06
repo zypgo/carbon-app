@@ -3,6 +3,12 @@ import { ethers } from 'ethers'
 import { useToast } from '@chakra-ui/react'
 import CarbonCreditSystemABI from '../contracts/CarbonCreditSystem.json'
 
+// 定义用户角色类型
+export enum UserRole {
+  User = 0,
+  Verifier = 1
+}
+
 // 定义上下文类型
 interface Web3ContextType {
   account: string | null
@@ -13,6 +19,10 @@ interface Web3ContextType {
   connectWallet: () => Promise<void>
   isConnecting: boolean
   resetConnection: () => void
+  userRole: UserRole
+  switchRole: (role: UserRole) => void
+  isVerifier: boolean
+  verifierAddress: string
 }
 
 // 创建上下文
@@ -24,7 +34,11 @@ const Web3Context = createContext<Web3ContextType>({
   contract: null,
   connectWallet: async () => {},
   isConnecting: false,
-  resetConnection: () => {}
+  resetConnection: () => {},
+  userRole: UserRole.User,
+  switchRole: () => {},
+  isVerifier: false,
+  verifierAddress: '0xe36013952aeF04fA8d3F8EbFd52cA53D58020ee4'
 })
 
 // 自定义钩子，用于访问上下文
@@ -42,11 +56,46 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
   const [contract, setContract] = useState<any | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<UserRole>(UserRole.User)
   
   const toast = useToast()
   
+  // 验证者地址
+  const verifierAddress = '0xe36013952aeF04fA8d3F8EbFd52cA53D58020ee4'
+  
   // 合约地址
   const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || '0x1234567890123456789012345678901234567890'
+  
+  // 检查账户的角色
+  const checkUserRole = (address: string): UserRole => {
+    if (address.toLowerCase() === verifierAddress.toLowerCase()) {
+      return UserRole.Verifier
+    }
+    return UserRole.User
+  }
+  
+  // 切换用户角色
+  const switchRole = (role: UserRole) => {
+    // 只有验证者可以切换角色
+    if (account?.toLowerCase() === verifierAddress.toLowerCase()) {
+      setUserRole(role)
+      toast({
+        title: '角色已切换',
+        description: `您现在的角色是: ${role === UserRole.Verifier ? '审核者' : '普通用户'}`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+    } else {
+      toast({
+        title: '角色切换失败',
+        description: '您没有权限切换到该角色',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    }
+  }
   
   // 重置连接状态
   const resetConnection = () => {
@@ -56,9 +105,11 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
     setSigner(null)
     setContract(null)
     setConnectionError(null)
+    setUserRole(UserRole.User)
     
     // 清除本地存储中的连接状态
     localStorage.removeItem('walletConnected')
+    localStorage.removeItem('userRole')
     
     toast({
       title: '连接已重置',
@@ -103,6 +154,13 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
         setProvider(browserProvider)
         setSigner(userSigner)
         
+        // 检查角色
+        const role = checkUserRole(userAccount)
+        setUserRole(role)
+        
+        // 保存角色到本地存储
+        localStorage.setItem('userRole', role.toString())
+        
         // 初始化合约
         try {
           // 简化合约初始化，仅保存ABI和地址信息
@@ -118,7 +176,7 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
           
           toast({
             title: '钱包已连接',
-            description: `已连接到账户: ${userAccount.substring(0, 6)}...${userAccount.substring(userAccount.length - 4)}`,
+            description: `已连接到账户: ${userAccount.substring(0, 6)}...${userAccount.substring(userAccount.length - 4)}，角色: ${role === UserRole.Verifier ? '审核者' : '普通用户'}`,
             status: 'success',
             duration: 3000,
             isClosable: true,
@@ -167,10 +225,13 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
       const handleAccountsChanged = (accounts: string[]) => {
         if (accounts.length > 0) {
           setAccount(accounts[0])
-          // 当账户变化时，需要更新signer
+          // 当账户变化时，需要更新signer和用户角色
           if (provider) {
             provider.getSigner().then(newSigner => {
               setSigner(newSigner)
+              const role = checkUserRole(accounts[0])
+              setUserRole(role)
+              localStorage.setItem('userRole', role.toString())
             }).catch(error => {
               console.error('获取新签名者失败:', error)
             })
@@ -180,7 +241,9 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
           setAccount(null)
           setSigner(null)
           setContract(null)
+          setUserRole(UserRole.User)
           localStorage.removeItem('walletConnected')
+          localStorage.removeItem('userRole')
           
           toast({
             title: '钱包已断开',
@@ -250,6 +313,16 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
             setProvider(browserProvider)
             setSigner(userSigner)
             
+            // 恢复用户角色
+            const savedRole = localStorage.getItem('userRole')
+            if (savedRole) {
+              setUserRole(Number(savedRole) as UserRole)
+            } else {
+              const role = checkUserRole(userAccount)
+              setUserRole(role)
+              localStorage.setItem('userRole', role.toString())
+            }
+            
             // 初始化合约
             try {
               // 简化合约初始化，仅保存ABI和地址信息
@@ -267,16 +340,21 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
           } else {
             // 没有可用账户，清除连接状态
             localStorage.removeItem('walletConnected')
+            localStorage.removeItem('userRole')
           }
         } catch (error) {
           console.error('自动连接失败:', error)
           localStorage.removeItem('walletConnected')
+          localStorage.removeItem('userRole')
         }
       }
     }
     
     autoConnect()
   }, [])
+  
+  // 计算衍生状态
+  const isVerifier = userRole === UserRole.Verifier
   
   return (
     <Web3Context.Provider
@@ -288,7 +366,11 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
         contract,
         connectWallet,
         isConnecting,
-        resetConnection
+        resetConnection,
+        userRole,
+        switchRole,
+        isVerifier,
+        verifierAddress
       }}
     >
       {children}

@@ -27,13 +27,35 @@ import {
   Flex,
   Tooltip,
   HStack,
-  Icon
+  Icon,
+  Progress,
+  Divider,
+  VStack
 } from '@chakra-ui/react'
 import { useWeb3 } from '../contexts/Web3Context'
 import { getUserBalance, getUserTransactions, Transaction } from '../services/userDataService'
 import { ethers } from 'ethers'
 import { InfoIcon, RepeatIcon } from '@chakra-ui/icons'
 import { useLanguage } from '../contexts/LanguageContext'
+
+// 使用与Projects组件相同的本地存储键名
+const STORAGE_KEY = 'carbon_app_projects';
+
+// 项目接口定义 (与Projects组件保持一致)
+interface Project {
+  id: number
+  name: string
+  description: string
+  target: number
+  progress: number
+  duration: number
+  status: 'active' | 'completed' | 'pending' | 'rejected'
+  submitter?: string
+  submissionDate?: string
+  reviewDate?: string
+  reviewedBy?: string
+  reviewNotes?: string
+}
 
 const Profile: FC = () => {
   const { account, connectWallet, provider } = useWeb3()
@@ -43,6 +65,7 @@ const Profile: FC = () => {
   const [ethBalance, setEthBalance] = useState<string>('0')
   const [isLoadingEthBalance, setIsLoadingEthBalance] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [userProjects, setUserProjects] = useState<Project[]>([])
   
   // 加载用户数据
   useEffect(() => {
@@ -57,8 +80,35 @@ const Profile: FC = () => {
       
       // 获取ETH余额
       fetchEthBalance()
+      
+      // 加载用户提交的项目
+      loadUserProjects()
     }
   }, [account])
+  
+  // 从localStorage加载项目并过滤出用户提交的项目
+  const loadUserProjects = () => {
+    if (!account) return;
+    
+    try {
+      const savedProjects = localStorage.getItem(STORAGE_KEY);
+      if (savedProjects) {
+        const allProjects: Project[] = JSON.parse(savedProjects);
+        
+        // 过滤出当前用户提交的项目
+        const filteredProjects = allProjects.filter(
+          project => project.submitter && 
+          (project.submitter.toLowerCase() === account.toLowerCase() || 
+           project.submitter.includes(account.substring(0, 6)))
+        );
+        
+        setUserProjects(filteredProjects);
+        console.log(`已加载用户项目: 找到${filteredProjects.length}个项目`);
+      }
+    } catch (error) {
+      console.error('加载用户项目失败:', error);
+    }
+  };
   
   // 获取ETH余额
   const fetchEthBalance = async () => {
@@ -83,14 +133,9 @@ const Profile: FC = () => {
       .reduce((total, tx) => total + tx.amount, 0)
   }
   
-  // 计算参与的项目数（不同卖家的数量）
+  // 计算参与的项目数（使用实际提交的项目数量）
   const calculateProjectCount = () => {
-    const sellers = new Set(
-      transactions
-        .filter(tx => tx.type === 'buy')
-        .map(tx => tx.counterparty)
-    )
-    return sellers.size
+    return userProjects.length;
   }
   
   // 计算总价值（所有交易的价值总和）
@@ -109,6 +154,87 @@ const Profile: FC = () => {
     const avgPrice = recentTransactions.reduce((sum, tx) => sum + tx.price, 0) / recentTransactions.length
     
     return balance * avgPrice
+  }
+  
+  // 渲染项目卡片
+  const renderProjectCard = (project: Project) => (
+    <Box 
+      key={project.id} 
+      p={5} 
+      shadow="md" 
+      borderWidth="1px" 
+      borderRadius="lg"
+      mb={4}
+      _hover={{ shadow: "lg" }}
+      transition="all 0.3s"
+    >
+      <Heading fontSize="xl" mb={2}>{project.name}</Heading>
+      <Text mb={4} color="gray.600" noOfLines={3}>{project.description}</Text>
+      
+      <Text fontWeight="bold" mb={1}>
+        {t('projects.card.target')}: {project.target} {t('common.tons')}
+      </Text>
+      
+      {(project.status === 'active' || project.status === 'completed') && (
+        <>
+          <Text fontWeight="bold" mb={1}>
+            {t('projects.card.progress')}:
+          </Text>
+          <Progress 
+            value={(project.progress / project.target) * 100} 
+            colorScheme="green" 
+            mb={4}
+          />
+          <Text fontSize="sm" mb={4}>
+            {project.progress} / {project.target} {t('common.tons')} 
+            ({Math.round((project.progress / project.target) * 100)}%)
+          </Text>
+        </>
+      )}
+      
+      <Text fontWeight="bold" mb={2}>
+        {t('projects.card.duration')}: {project.duration} {t('common.months')}
+      </Text>
+      
+      <Flex justifyContent="space-between" alignItems="center">
+        <Text fontWeight="bold">
+          {t('projects.card.status')}: {getStatusBadge(project.status)}
+        </Text>
+      </Flex>
+      
+      {/* 提交者和日期信息 */}
+      <Divider my={3} />
+      <VStack align="start" spacing={1} mt={3} fontSize="sm" color="gray.600">
+        {project.submissionDate && (
+          <Text>{t('projects.card.submitted')}: {project.submissionDate}</Text>
+        )}
+        {project.reviewDate && (
+          <Text>{t('projects.card.reviewed')}: {project.reviewDate}</Text>
+        )}
+        {project.reviewedBy && (
+          <Text>审核者: {project.reviewedBy}</Text>
+        )}
+        {project.reviewNotes && (
+          <Text>{t('projects.card.notes')}: {project.reviewNotes}</Text>
+        )}
+      </VStack>
+    </Box>
+  );
+  
+  // 渲染状态徽章
+  const getStatusBadge = (status: string) => {
+    switch(status) {
+      case 'active':
+        return <Badge colorScheme="green">{t('projects.status.active')}</Badge>
+      case 'completed':
+        return <Badge colorScheme="blue">{t('projects.status.completed')}</Badge>
+      case 'pending':
+        return <Badge colorScheme="yellow">{t('projects.status.pending')}</Badge>
+      case 'rejected':
+        return <Badge colorScheme="red">{t('projects.status.rejected')}</Badge>
+      default:
+        return null
+    }
   }
 
   return (
@@ -239,7 +365,14 @@ const Profile: FC = () => {
                 )}
               </TabPanel>
               <TabPanel>
-                <Text>{t('profile.projects.empty')}</Text>
+                {userProjects.length > 0 ? (
+                  <Box>
+                    <Heading size="md" mb={4}>{t('profile.my.projects')}</Heading>
+                    {userProjects.map(renderProjectCard)}
+                  </Box>
+                ) : (
+                  <Text>{t('profile.projects.empty')}</Text>
+                )}
               </TabPanel>
               <TabPanel>
                 <Text>{t('profile.settings.coming')}</Text>
@@ -266,9 +399,7 @@ const StatBox = ({ label, value, unit, tooltip }: StatBoxProps) => (
         <StatLabel>{label}</StatLabel>
         {tooltip && (
           <Tooltip label={tooltip}>
-            <span>
-              <Icon as={InfoIcon} ml={1} boxSize={3} color="gray.500" />
-            </span>
+            <Icon as={InfoIcon} ml={1} boxSize={3} color="gray.400" />
           </Tooltip>
         )}
       </Flex>

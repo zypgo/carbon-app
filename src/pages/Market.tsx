@@ -121,10 +121,10 @@ const Market: FC = () => {
         value: weiValue
       }
       
-      // 发送交易
+      // 发送交易前显示提示
       toast({
         title: t('common.info'),
-        description: t('market.connect.desc'),
+        description: t('market.processing'),
         status: 'info',
         duration: 5000,
         isClosable: true
@@ -133,11 +133,13 @@ const Market: FC = () => {
       try {
         // 发送实际的以太坊交易
         const transaction = await signer.sendTransaction(tx)
+        console.log("Transaction sent:", transaction.hash);
         
         // 等待交易被确认
-        await transaction.wait()
+        const receipt = await transaction.wait();
+        console.log("Transaction confirmed in block:", receipt?.blockNumber);
         
-        // 交易成功
+        // 交易成功后更新列表
         setListings(prevListings => 
           prevListings.map(listing => 
             listing.id === listingId ? { ...listing, active: false } : listing
@@ -145,9 +147,11 @@ const Market: FC = () => {
         )
         
         // 记录交易并更新余额
-        recordTransaction(account, 'buy', amount, price, seller)
-        setUserBalance(getUserBalance(account))
+        recordTransaction(account, 'buy', amount, price, seller, transaction.hash, receipt ? Number(receipt.blockNumber) : undefined, 'confirmed');
+        const newBalance = getUserBalance(account);
+        setUserBalance(newBalance);
         
+        // 显示成功消息
         toast({
           title: t('common.success'),
           description: `${t('profile.type.buy')} ${amount} ${t('common.credits')}, ${transaction.hash.substring(0, 10)}...`,
@@ -156,17 +160,41 @@ const Market: FC = () => {
           isClosable: true
         })
       } catch (error: any) {
-        console.error('交易失败:', error)
+        console.error('交易执行失败:', error);
+        // 显示详细的错误信息
+        let errorMessage = t('common.error');
+        
+        if (error.code) {
+          switch(error.code) {
+            case 'ACTION_REJECTED':
+              errorMessage = t('market.errors.rejected');
+              break;
+            case 'INSUFFICIENT_FUNDS':
+              errorMessage = t('market.errors.insufficient');
+              break;
+            case 'NETWORK_ERROR':
+              errorMessage = t('market.errors.network');
+              break;
+            case 'UNPREDICTABLE_GAS_LIMIT':
+              errorMessage = t('market.errors.gas');
+              break;
+            default:
+              errorMessage = `${t('common.error')}: ${error.message}`;
+          }
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
         toast({
           title: t('common.error'),
-          description: error.message || t('common.error'),
+          description: errorMessage,
           status: 'error',
           duration: 5000,
           isClosable: true
         })
       }
     } catch (error: any) {
-      console.error('购买失败:', error)
+      console.error('购买准备失败:', error);
       toast({
         title: t('common.error'),
         description: error.message || t('common.error'),

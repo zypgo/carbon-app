@@ -112,6 +112,7 @@ const translations: Record<Language, Record<string, string>> = {
     'profile.type.buy': '购买',
     'profile.type.sell': '出售',
     'profile.counterparty.market': '市场',
+    'profile.my.projects': '我的碳项目',
     
     // 碳排放
     'emissions.title': '碳排放记录',
@@ -158,6 +159,40 @@ const translations: Record<Language, Record<string, string>> = {
     'projects.status.active': '进行中',
     'projects.status.completed': '已完成',
     'projects.status.pending': '待审核',
+    'projects.status.rejected': '已拒绝',
+    
+    // 项目审核
+    'projects.review.button': '审核',
+    'projects.review.title': '审核项目',
+    'projects.review.notes': '审核备注',
+    'projects.review.notes.placeholder': '输入审核意见或建议',
+    'projects.review.reject': '拒绝',
+    'projects.review.rejected': '项目已拒绝',
+    'projects.review.empty': '没有待审核的项目',
+    'projects.rejected.empty': '没有被拒绝的项目',
+    
+    // 项目删除
+    'projects.delete.button': '删除',
+    'projects.delete.title': '删除项目',
+    'projects.delete.confirm': '确认删除',
+    'projects.delete.success': '项目已删除',
+    'projects.delete.prohibited': '提交内容包含违禁词',
+    
+    // 项目选项卡
+    'projects.tabs.active': '活跃项目',
+    'projects.tabs.pending': '待审核',
+    'projects.tabs.rejected': '已拒绝',
+    
+    // 项目卡片其他信息
+    'projects.card.submitter': '提交者',
+    'projects.card.submitted': '提交日期',
+    'projects.card.reviewed': '审核日期',
+    'projects.card.notes': '备注',
+    
+    // 角色相关
+    'role.verifier': '审核者',
+    'role.user': '普通用户',
+    'role.switch': '切换角色',
     
     // 通用
     'common.loading': '加载中...',
@@ -259,6 +294,7 @@ const translations: Record<Language, Record<string, string>> = {
     'profile.type.buy': 'Buy',
     'profile.type.sell': 'Sell',
     'profile.counterparty.market': 'Market',
+    'profile.my.projects': 'My Carbon Projects',
     
     // Emissions
     'emissions.title': 'Carbon Emissions',
@@ -305,6 +341,40 @@ const translations: Record<Language, Record<string, string>> = {
     'projects.status.active': 'Active',
     'projects.status.completed': 'Completed',
     'projects.status.pending': 'Pending Review',
+    'projects.status.rejected': 'Rejected',
+    
+    // Project review
+    'projects.review.button': 'Review',
+    'projects.review.title': 'Review Project',
+    'projects.review.notes': 'Review Notes',
+    'projects.review.notes.placeholder': 'Enter review comments or suggestions',
+    'projects.review.reject': 'Reject',
+    'projects.review.rejected': 'Project rejected',
+    'projects.review.empty': 'No projects pending review',
+    'projects.rejected.empty': 'No rejected projects',
+    
+    // Project deletion
+    'projects.delete.button': 'Delete',
+    'projects.delete.title': 'Delete Project',
+    'projects.delete.confirm': 'Confirm Deletion',
+    'projects.delete.success': 'Project deleted',
+    'projects.delete.prohibited': 'Submission contains prohibited words',
+    
+    // Project tabs
+    'projects.tabs.active': 'Active Projects',
+    'projects.tabs.pending': 'Pending Review',
+    'projects.tabs.rejected': 'Rejected',
+    
+    // Project card additional info
+    'projects.card.submitter': 'Submitter',
+    'projects.card.submitted': 'Submission Date',
+    'projects.card.reviewed': 'Review Date',
+    'projects.card.notes': 'Notes',
+    
+    // Role related
+    'role.verifier': 'Verifier',
+    'role.user': 'Regular User',
+    'role.switch': 'Switch Role',
     
     // Common
     'common.loading': 'Loading...',
