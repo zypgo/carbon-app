@@ -3,13 +3,14 @@ import { useToast } from '@chakra-ui/react'
 
 // 智能合约接口定义
 export interface EmissionRecord {
-  id: string
+  id: number
   user: string
   amount: number
   activity: string
   source?: string
   timestamp: number
   verified: boolean
+  isVerified: boolean
 }
 
 export interface Project {
@@ -99,12 +100,13 @@ export class ContractService {
       const emissions = await this.contract.getUserEmissions(this.account)
 
       return emissions.map((emission: any) => ({
-        id: emission.id.toString(),
+        id: Number(emission.id),
         user: emission.user,
         amount: Number(ethers.formatUnits(emission.amount, 18)),
         activity: emission.activity,
         timestamp: Number(emission.timestamp),
-        verified: emission.verified
+        verified: emission.verified,
+        isVerified: emission.verified
       }))
     } catch (error: any) {
       console.error('获取碳排放记录失败:', error)
@@ -115,6 +117,24 @@ export class ContractService {
   // 获取排放记录的别名方法
   async getEmissionRecords(userAddress: string): Promise<EmissionRecord[]> {
     return this.getUserEmissions()
+  }
+
+  // 验证排放记录（仅验证者）
+  async verifyEmission(emissionId: number): Promise<string> {
+    try {
+      console.log('正在验证排放记录:', { emissionId })
+
+      const tx = await this.contract.verifyEmission(emissionId)
+
+      console.log('验证交易已发送:', tx.hash)
+      const receipt = await tx.wait()
+      console.log('验证交易已确认:', receipt)
+
+      return tx.hash
+    } catch (error: any) {
+      console.error('验证排放记录失败:', error)
+      throw new Error(`验证排放记录失败: ${error.message}`)
+    }
   }
 
   // 提交减碳项目

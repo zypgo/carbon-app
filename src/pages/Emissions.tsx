@@ -22,8 +22,13 @@ import {
   AlertTitle,
   AlertDescription,
   Spinner,
-  Center
+  Center,
+  Badge,
+  HStack,
+  IconButton,
+  Tooltip
 } from '@chakra-ui/react'
+import { CheckIcon } from '@chakra-ui/icons'
 import { useWeb3 } from '../contexts/Web3Context'
 import { useLanguage } from '../contexts/LanguageContext'
 import { createContractService, EmissionRecord } from '../services/contractService'
@@ -36,7 +41,22 @@ const Emissions: FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [emissions, setEmissions] = useState<EmissionRecord[]>([])
+  const [isVerifier, setIsVerifier] = useState(false)
+  const [verifyingIds, setVerifyingIds] = useState<Set<number>>(new Set())
   const toast = useToast()
+
+  // 检查验证者权限
+  const checkVerifierStatus = async () => {
+    if (!contract || !account || !provider || !signer) return
+    
+    try {
+      const contractService = createContractService(contract, provider, signer, account)
+      const verifierStatus = await contractService.isVerifier(account)
+      setIsVerifier(verifierStatus)
+    } catch (error) {
+      console.error('检查验证者权限失败:', error)
+    }
+  }
 
   // 加载排放记录
     const loadEmissions = async () => {
@@ -63,6 +83,7 @@ const Emissions: FC = () => {
 
   useEffect(() => {
     loadEmissions()
+    checkVerifierStatus()
   }, [contract, account])
 
   // 根据当前语言获取活动类型选项
@@ -160,6 +181,45 @@ const Emissions: FC = () => {
       })
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  // 验证排放记录
+  const handleVerifyEmission = async (emissionId: number) => {
+    if (!contract || !signer || !provider || !account) return
+    
+    try {
+      setVerifyingIds(prev => new Set(prev).add(emissionId))
+      const contractService = createContractService(contract, provider, signer, account)
+      
+      await contractService.verifyEmission(emissionId)
+      
+      toast({
+        title: t('common.success'),
+        description: '排放记录验证成功',
+        status: 'success',
+        duration: 3000,
+        isClosable: true
+      })
+      
+      // 重新加载排放记录
+      await loadEmissions()
+      
+    } catch (error) {
+      console.error('验证失败:', error)
+      toast({
+        title: t('common.error'),
+        description: '验证排放记录失败',
+        status: 'error',
+        duration: 3000,
+        isClosable: true
+      })
+    } finally {
+      setVerifyingIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(emissionId)
+        return newSet
+      })
     }
   }
 
@@ -269,6 +329,8 @@ const Emissions: FC = () => {
                     <Th>{t('emissions.table.activity')}</Th>
                     <Th isNumeric>{t('emissions.table.amount')}</Th>
                     <Th>{t('emissions.table.time')}</Th>
+                    <Th>验证状态</Th>
+                    {isVerifier && <Th>操作</Th>}
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -278,6 +340,31 @@ const Emissions: FC = () => {
                       <Td>{emission.activity}</Td>
                       <Td isNumeric>{emission.amount.toFixed(2)} kg CO₂</Td>
                       <Td>{new Date(emission.timestamp * 1000).toLocaleString()}</Td>
+                      <Td>
+                        <Badge 
+                          colorScheme={emission.isVerified ? 'green' : 'yellow'}
+                          variant={emission.isVerified ? 'solid' : 'outline'}
+                        >
+                          {emission.isVerified ? '已验证' : '待验证'}
+                        </Badge>
+                      </Td>
+                      {isVerifier && (
+                        <Td>
+                          {!emission.isVerified && (
+                            <Tooltip label="验证此排放记录">
+                              <IconButton
+                                aria-label="验证排放记录"
+                                icon={<CheckIcon />}
+                                size="sm"
+                                colorScheme="green"
+                                variant="outline"
+                                isLoading={verifyingIds.has(emission.id)}
+                                onClick={() => handleVerifyEmission(emission.id)}
+                              />
+                            </Tooltip>
+                          )}
+                        </Td>
+                      )}
                     </Tr>
                   ))}
                 </Tbody>
