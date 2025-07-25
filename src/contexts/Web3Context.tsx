@@ -63,8 +63,52 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
   // 验证者地址
   const verifierAddress = '0xe36013952aeF04fA8d3F8EbFd52cA53D58020ee4'
   
-  // 合约地址
+  // 合约地址和网络配置
   const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || '0x1234567890123456789012345678901234567890'
+  const SEPOLIA_CHAIN_ID = 11155111
+  const SEPOLIA_RPC_URL = import.meta.env.VITE_SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com'
+  
+  // 检查并切换到Sepolia网络
+  const switchToSepolia = async () => {
+    if (!window.ethereum) return false
+    
+    try {
+      // 尝试切换到Sepolia网络
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: `0x${SEPOLIA_CHAIN_ID.toString(16)}` }],
+      })
+      return true
+    } catch (switchError: any) {
+      // 如果网络不存在，尝试添加
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [
+              {
+                chainId: `0x${SEPOLIA_CHAIN_ID.toString(16)}`,
+                chainName: 'Sepolia Test Network',
+                nativeCurrency: {
+                  name: 'SepoliaETH',
+                  symbol: 'ETH',
+                  decimals: 18,
+                },
+                rpcUrls: [SEPOLIA_RPC_URL],
+                blockExplorerUrls: ['https://sepolia.etherscan.io/'],
+              },
+            ],
+          })
+          return true
+        } catch (addError) {
+          console.error('添加Sepolia网络失败:', addError)
+          return false
+        }
+      }
+      console.error('切换到Sepolia网络失败:', switchError)
+      return false
+    }
+  }
   
   // 检查账户的角色
   const checkUserRole = (address: string): UserRole => {
@@ -145,12 +189,41 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
       
       if (accounts.length > 0) {
         const userAccount = accounts[0]
-        const userSigner = await browserProvider.getSigner()
         const networkData = await browserProvider.getNetwork()
         const chainIdentifier = Number(networkData.chainId)
         
+        // 检查是否在Sepolia网络
+        if (chainIdentifier !== SEPOLIA_CHAIN_ID) {
+          toast({
+            title: '网络错误',
+            description: '请切换到Sepolia测试网络',
+            status: 'warning',
+            duration: 5000,
+            isClosable: true,
+          })
+          
+          const switched = await switchToSepolia()
+          if (!switched) {
+            toast({
+              title: '网络切换失败',
+              description: '无法切换到Sepolia网络，请手动切换',
+              status: 'error',
+              duration: 5000,
+              isClosable: true,
+            })
+            return
+          }
+          
+          // 重新获取网络信息
+          const newNetworkData = await browserProvider.getNetwork()
+          const newChainId = Number(newNetworkData.chainId)
+          setChainId(newChainId)
+        } else {
+          setChainId(chainIdentifier)
+        }
+        
+        const userSigner = await browserProvider.getSigner()
         setAccount(userAccount)
-        setChainId(chainIdentifier)
         setProvider(browserProvider)
         setSigner(userSigner)
         
@@ -376,4 +449,4 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
       {children}
     </Web3Context.Provider>
   )
-} 
+}

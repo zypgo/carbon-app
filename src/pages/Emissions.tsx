@@ -26,35 +26,44 @@ import {
 } from '@chakra-ui/react'
 import { useWeb3 } from '../contexts/Web3Context'
 import { useLanguage } from '../contexts/LanguageContext'
-
-interface EmissionRecord {
-  id: number
-  activity: string
-  amount: number
-  timestamp: number
-}
+import { createContractService, EmissionRecord } from '../services/contractService'
 
 const Emissions: FC = () => {
-  const { account, contract, connectWallet } = useWeb3()
+  const { account, contract, connectWallet, provider, signer } = useWeb3()
   const { t, language } = useLanguage()
   const [activity, setActivity] = useState('')
   const [amount, setAmount] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [emissions, setEmissions] = useState<EmissionRecord[]>([
-    {
-      id: 1,
-      activity: '交通出行',
-      amount: 2.5,
-      timestamp: Date.now() - 86400000 * 2
-    },
-    {
-      id: 2,
-      activity: '电力使用',
-      amount: 1.8,
-      timestamp: Date.now() - 86400000
-    }
-  ])
+  const [isLoading, setIsLoading] = useState(false)
+  const [emissions, setEmissions] = useState<EmissionRecord[]>([])
   const toast = useToast()
+
+  // 加载排放记录
+    const loadEmissions = async () => {
+      if (!contract || !account || !provider || !signer) return
+      
+      try {
+        setIsLoading(true)
+        const contractService = createContractService(contract, provider, signer, account)
+        const records = await contractService.getEmissionRecords(account)
+        setEmissions(records)
+     } catch (error) {
+       console.error('加载排放记录失败:', error)
+       toast({
+         title: t('common.error'),
+         description: '加载排放记录失败',
+         status: 'error',
+         duration: 3000,
+         isClosable: true
+       })
+     } finally {
+       setIsLoading(false)
+     }
+   }
+
+  useEffect(() => {
+    loadEmissions()
+  }, [contract, account])
 
   // 根据当前语言获取活动类型选项
   const getEmissionActivities = () => {
@@ -104,35 +113,42 @@ const Emissions: FC = () => {
       return
     }
     
+    if (!contract || !signer || !provider) {
+      toast({
+        title: t('common.error'),
+        description: '合约未连接',
+        status: 'error',
+        duration: 3000,
+        isClosable: true
+      })
+      return
+    }
+    
     try {
-      setIsSubmitting(true)
-      // 这里应该调用合约方法记录排放
-      // await contract.recordEmission(parseFloat(amount), activity)
+         setIsSubmitting(true)
+         const contractService = createContractService(contract, provider, signer, account)
+         
+         // 调用合约方法记录排放
+         await contractService.recordEmission(
+           parseFloat(amount),
+           emissionActivities.find(a => a.value === activity)?.label || activity
+         )
       
-      // 模拟记录成功
-      setTimeout(() => {
-        const newEmission: EmissionRecord = {
-          id: emissions.length + 1,
-          activity: emissionActivities.find(a => a.value === activity)?.label || activity,
-          amount: parseFloat(amount),
-          timestamp: Date.now()
-        }
-        
-        setEmissions(prev => [newEmission, ...prev])
-        
-        toast({
-          title: t('common.success'),
-          description: t('emissions.record.success'),
-          status: 'success',
-          duration: 5000,
-          isClosable: true
-        })
-        
-        // 重置表单
-        setActivity('')
-        setAmount('')
-        setIsSubmitting(false)
-      }, 2000)
+      toast({
+        title: t('common.success'),
+        description: t('emissions.record.success'),
+        status: 'success',
+        duration: 5000,
+        isClosable: true
+      })
+      
+      // 重置表单
+      setActivity('')
+      setAmount('')
+      
+      // 重新加载排放记录
+      await loadEmissions()
+      
     } catch (error) {
       console.error('记录失败:', error)
       toast({
@@ -142,11 +158,16 @@ const Emissions: FC = () => {
         duration: 5000,
         isClosable: true
       })
+    } finally {
       setIsSubmitting(false)
     }
   }
 
-  if (isSubmitting) {
+  // 计算总排放量
+  const totalEmissions = emissions.reduce((sum, emission) => sum + emission.amount, 0)
+  const averageEmission = emissions.length > 0 ? totalEmissions / emissions.length : 0
+
+  if (isLoading) {
     return (
       <Center h="300px">
         <Spinner size="xl" color="green.500" />
@@ -160,6 +181,20 @@ const Emissions: FC = () => {
       <Text mb={8} color="gray.600">
         {t('emissions.subtitle')}
       </Text>
+
+      {/* 统计信息卡片 */}
+      {account && (
+        <VStack spacing={4} mb={8}>
+          <Box w="full" p={6} borderWidth="1px" borderRadius="lg" bg="green.50">
+            <Heading size="md" mb={4} color="green.700">排放统计</Heading>
+            <VStack spacing={2} align="start">
+              <Text><strong>总排放量:</strong> {totalEmissions.toFixed(2)} kg CO₂</Text>
+              <Text><strong>平均排放量:</strong> {averageEmission.toFixed(2)} kg CO₂</Text>
+              <Text><strong>记录数量:</strong> {emissions.length} 条</Text>
+            </VStack>
+          </Box>
+        </VStack>
+      )}
 
       {!account ? (
         <Alert status="warning" mb={8}>
@@ -201,10 +236,18 @@ const Emissions: FC = () => {
                     min="0.01" 
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
+                    placeholder="请输入排放量 (kg CO₂)"
                   />
                 </FormControl>
                 
-                <Button type="submit" colorScheme="green" alignSelf="flex-end">
+                <Button 
+                  type="submit" 
+                  colorScheme="green" 
+                  alignSelf="flex-end"
+                  isLoading={isSubmitting}
+                  loadingText="记录中..."
+                  isDisabled={!activity || !amount || parseFloat(amount) <= 0}
+                >
                   {t('emissions.form.submit')}
                 </Button>
               </VStack>
@@ -218,26 +261,28 @@ const Emissions: FC = () => {
               {t('emissions.history.empty')}
             </Alert>
           ) : (
-            <Table variant="simple">
-              <Thead>
-                <Tr>
-                  <Th>ID</Th>
-                  <Th>{t('emissions.table.activity')}</Th>
-                  <Th isNumeric>{t('emissions.table.amount')}</Th>
-                  <Th>{t('emissions.table.time')}</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {emissions.map((emission) => (
-                  <Tr key={emission.id}>
-                    <Td>{emission.id}</Td>
-                    <Td>{emission.activity}</Td>
-                    <Td isNumeric>{emission.amount.toFixed(2)}</Td>
-                    <Td>{new Date(emission.timestamp).toLocaleString()}</Td>
+            <Box overflowX="auto">
+              <Table variant="simple">
+                <Thead>
+                  <Tr>
+                    <Th>ID</Th>
+                    <Th>{t('emissions.table.activity')}</Th>
+                    <Th isNumeric>{t('emissions.table.amount')}</Th>
+                    <Th>{t('emissions.table.time')}</Th>
                   </Tr>
-                ))}
-              </Tbody>
-            </Table>
+                </Thead>
+                <Tbody>
+                  {emissions.map((emission) => (
+                    <Tr key={emission.id}>
+                      <Td>{emission.id}</Td>
+                      <Td>{emission.activity}</Td>
+                      <Td isNumeric>{emission.amount.toFixed(2)} kg CO₂</Td>
+                      <Td>{new Date(emission.timestamp * 1000).toLocaleString()}</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </Box>
           )}
         </>
       )}
@@ -245,4 +290,4 @@ const Emissions: FC = () => {
   )
 }
 
-export default Emissions 
+export default Emissions

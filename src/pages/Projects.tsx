@@ -33,20 +33,20 @@ import {
   Tabs,
   TabList,
   TabPanel,
-  TabPanels
+  TabPanels,
+  Spinner,
+  Center
 } from '@chakra-ui/react'
 import { useWeb3 } from '../contexts/Web3Context'
 import { useLanguage } from '../contexts/LanguageContext'
 import { UserRole } from '../contexts/Web3Context'
+import { createContractService } from '../services/contractService'
 
 // 违禁词列表
 const PROHIBITED_WORDS = [
   'drug', 'drugs', '毒', '毒品', '违法', 'illegal', 'hack', 'hacking', 
   'scam', '诈骗', '赌博', 'gambling', 'casino', '色情', 'porn', 'pornography'
 ];
-
-// 本地存储键名
-const STORAGE_KEY = 'carbon_app_projects';
 
 interface Project {
   id: number
@@ -55,7 +55,7 @@ interface Project {
   target: number
   progress: number
   duration: number
-  status: 'active' | 'completed' | 'pending' | 'rejected'
+  status: 'active' | 'completed' | 'pending' | 'rejected' | 'approved'
   submitter?: string
   submissionDate?: string
   reviewDate?: string
@@ -64,102 +64,61 @@ interface Project {
 }
 
 const Projects: FC = () => {
-  const { account, connectWallet, userRole, isVerifier } = useWeb3()
+  const { account, connectWallet, userRole, isVerifier, contract, provider, signer } = useWeb3()
   const { t } = useLanguage()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const { isOpen: isReviewOpen, onOpen: onReviewOpen, onClose: onReviewClose } = useDisclosure()
   
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [reviewNotes, setReviewNotes] = useState('')
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(false)
+  const [contractService, setContractService] = useState<any>(null)
   
-  // 初始项目列表
-  const initialProjects: Project[] = [
-    {
-      id: 1,
-      name: '森林保护计划',
-      description: '保护亚马逊雨林，减少森林砍伐，增加碳汇',
-      target: 5000,
-      progress: 3500,
-      duration: 24,
-      status: 'active',
-      submitter: '0x1234...5678',
-      submissionDate: '2023-10-01'
-    },
-    {
-      id: 2,
-      name: '可再生能源转型',
-      description: '支持太阳能和风能项目，减少化石燃料使用',
-      target: 3000,
-      progress: 3000,
-      duration: 12,
-      status: 'completed',
-      submitter: '0x8765...4321',
-      submissionDate: '2023-09-15',
-      reviewDate: '2023-09-20',
-      reviewedBy: '0xe360...0ee4',
-      reviewNotes: '项目符合减排标准，已验证完成'
-    },
-    {
-      id: 3,
-      name: '海洋碳捕获',
-      description: '利用海藻养殖捕获大气中的二氧化碳',
-      target: 2000,
-      progress: 500,
-      duration: 36,
-      status: 'active',
-      submitter: '0xabcd...efgh',
-      submissionDate: '2023-08-20',
-      reviewDate: '2023-08-25',
-      reviewedBy: '0xe360...0ee4'
-    },
-    {
-      id: 4,
-      name: '工业减排项目',
-      description: '改进工业流程，减少能源消耗和排放',
-      target: 8000,
-      progress: 0,
-      duration: 48,
-      status: 'pending',
-      submitter: '0x2468...1357',
-      submissionDate: '2023-10-10'
-    },
-    {
-      id: 5,
-      name: '建筑节能方案',
-      description: '通过改进建筑隔热和能源系统减少碳排放',
-      target: 3500,
-      progress: 0,
-      duration: 24,
-      status: 'rejected',
-      submitter: '0x1357...2468',
-      submissionDate: '2023-09-01',
-      reviewDate: '2023-09-10',
-      reviewedBy: '0xe360...0ee4',
-      reviewNotes: '项目不符合减排标准，缺乏技术可行性证明'
+  // 初始化合约服务
+    useEffect(() => {
+      if (contract && provider && signer && account) {
+        const service = createContractService(contract, provider, signer, account)
+        setContractService(service)
+      }
+    }, [contract, provider, signer, account])
+  
+  // 从区块链加载项目数据
+  const loadProjects = async () => {
+    if (!contractService) return
+    
+    setLoading(true)
+    try {
+      const projectsData = await contractService.getAllProjects()
+      setProjects(projectsData)
+    } catch (error) {
+      console.error('加载项目失败:', error)
+      toast({
+        title: t('common.error'),
+        description: '加载项目数据失败',
+        status: 'error',
+        duration: 3000,
+        isClosable: true
+      })
+    } finally {
+      setLoading(false)
     }
-  ];
-  
-  const [projects, setProjects] = useState<Project[]>([]);
-  
-  // 从本地存储加载项目数据
+  }
+
   useEffect(() => {
-    const savedProjects = localStorage.getItem(STORAGE_KEY);
-    if (savedProjects) {
-      setProjects(JSON.parse(savedProjects));
-    } else {
-      // 首次加载使用初始项目列表
-      setProjects(initialProjects);
-      // 保存到本地存储
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(initialProjects));
-    }
-  }, []);
-  
-  // 当项目列表变更时，更新本地存储
+    loadProjects()
+  }, [contractService])
+
+  // 添加定时刷新机制
   useEffect(() => {
-    if (projects.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-    }
-  }, [projects]);
+    if (!contractService) return
+    
+    const interval = setInterval(() => {
+      loadProjects()
+    }, 10000) // 每10秒刷新一次
+    
+    return () => clearInterval(interval)
+  }, [contractService])
   
   const [newProject, setNewProject] = useState({
     name: '',
@@ -191,11 +150,22 @@ const Projects: FC = () => {
     return [false, ''];
   };
   
-  const handleSubmitProject = () => {
+  const handleSubmitProject = async () => {
     if (!newProject.name || !newProject.description || !newProject.target || !newProject.duration) {
       toast({
         title: t('common.error'),
         description: t('projects.form.incomplete'),
+        status: 'error',
+        duration: 3000,
+        isClosable: true
+      })
+      return
+    }
+    
+    if (!contractService) {
+      toast({
+        title: t('common.error'),
+        description: '合约服务未初始化',
         status: 'error',
         duration: 3000,
         isClosable: true
@@ -220,50 +190,62 @@ const Projects: FC = () => {
       return;
     }
     
-    // 自动审核通过
-    const project: Project = {
-      id: Math.max(0, ...projects.map(p => p.id)) + 1,
-      name: newProject.name,
-      description: newProject.description,
-      target: parseFloat(newProject.target),
-      progress: 0,
-      duration: parseInt(newProject.duration),
-      status: 'active',  // 直接设为活跃状态，无需等待审核
-      submitter: account || '0xunknown',
-      submissionDate: new Date().toISOString().split('T')[0],
-      reviewDate: new Date().toISOString().split('T')[0],
-      reviewedBy: 'system',
-      reviewNotes: '系统自动审核通过'
+    setLoading(true)
+    try {
+      // 提交项目到区块链
+      await contractService.submitProject(
+        newProject.name,
+        newProject.description,
+        newProject.target, // 使用target作为projectType
+        parseFloat(newProject.duration) // 使用duration作为expectedCredits
+      )
+      
+      toast({
+        title: t('common.success'),
+        description: t('projects.submit.success'),
+        status: 'success',
+        duration: 5000,
+        isClosable: true
+      })
+      
+      // 立即重新加载项目列表
+      await loadProjects()
+      
+      // 重置表单
+      setNewProject({
+        name: '',
+        description: '',
+        target: '',
+        duration: ''
+      })
+      
+      onClose()
+    } catch (error: any) {
+      console.error('提交项目失败:', error)
+      
+      let errorMessage = '提交失败'
+      if (error.code === 4001) {
+        errorMessage = '用户拒绝了交易'
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+      
+      toast({
+        title: t('common.error'),
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true
+      })
+    } finally {
+      setLoading(false)
     }
-    
-    const updatedProjects = [...projects, project];
-    setProjects(updatedProjects);
-    
-    // 保存到本地存储
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProjects));
-    
-    toast({
-      title: t('common.success'),
-      description: t('projects.submit.success'),
-      status: 'success',
-      duration: 5000,
-      isClosable: true
-    })
-    
-    // 重置表单
-    setNewProject({
-      name: '',
-      description: '',
-      target: '',
-      duration: ''
-    })
-    
-    onClose()
   }
   
   const getStatusBadge = (status: string) => {
     switch(status) {
       case 'active':
+      case 'approved':
         return <Badge colorScheme="green">{t('projects.status.active')}</Badge>
       case 'completed':
         return <Badge colorScheme="blue">{t('projects.status.completed')}</Badge>
@@ -283,49 +265,68 @@ const Projects: FC = () => {
     onReviewOpen()
   }
   
-  // 审核项目 - 验证者只能拒绝/删除项目
-  const handleReviewProject = (approve: boolean) => {
-    if (!selectedProject) return
+  // 审核项目
+  const handleReviewProject = async (approve: boolean) => {
+    if (!selectedProject || !contractService) return
     
-    // 验证者只能拒绝项目，不能批准
-    if (isVerifier && approve) {
+    setLoading(true)
+    try {
+      if (approve) {
+        // 批准项目
+        await contractService.approveProject(selectedProject.id, reviewNotes)
+        
+        toast({
+          title: t('common.success'),
+          description: `项目已批准！`,
+          status: 'success',
+          duration: 5000,
+          isClosable: true
+        })
+      } else {
+        // 拒绝项目或删除项目
+        if (selectedProject.status === 'active') {
+          await contractService.deleteProject(selectedProject.id)
+          toast({
+            title: t('common.success'),
+            description: '项目已删除',
+            status: 'info',
+            duration: 3000,
+            isClosable: true
+          })
+        } else {
+          await contractService.rejectProject(selectedProject.id, reviewNotes)
+          toast({
+            title: t('common.success'),
+            description: t('projects.review.rejected'),
+            status: 'info',
+            duration: 3000,
+            isClosable: true
+          })
+        }
+      }
+      
+      // 立即重新加载项目列表
+      await loadProjects()
+      
+    } catch (error: any) {
+      console.error('审核项目失败:', error)
+      
+      let errorMessage = '操作失败'
+      if (error.code === 4001) {
+        errorMessage = '用户拒绝了交易'
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+      
       toast({
         title: t('common.error'),
-        description: "验证者只能删除或拒绝项目，无法批准",
+        description: errorMessage,
         status: 'error',
-        duration: 3000,
+        duration: 5000,
         isClosable: true
       })
-      return;
-    }
-    
-    if (!approve) {
-      // 拒绝逻辑
-      const updatedProjects = projects.map(p => {
-        if (p.id === selectedProject.id) {
-          return {
-            ...p,
-            status: 'rejected' as const,
-            reviewDate: new Date().toISOString().split('T')[0],
-            reviewedBy: account || '0xunknown',
-            reviewNotes: reviewNotes || '项目已被删除'
-          }
-        }
-        return p
-      })
-      
-      setProjects(updatedProjects)
-      
-      // 保存到本地存储
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProjects));
-      
-      toast({
-        title: t('common.success'),
-        description: t('projects.review.rejected'),
-        status: 'info',
-        duration: 3000,
-        isClosable: true
-      })
+    } finally {
+      setLoading(false)
     }
     
     setSelectedProject(null)
@@ -336,7 +337,15 @@ const Projects: FC = () => {
   // 按状态过滤项目
   const filterProjectsByStatus = (status: string | string[]) => {
     if (Array.isArray(status)) {
-      return projects.filter(p => status.includes(p.status))
+      return projects.filter(p => {
+        if (status.includes('active') && (p.status === 'active' || p.status === 'approved')) {
+          return true
+        }
+        return status.includes(p.status)
+      })
+    }
+    if (status === 'active') {
+      return projects.filter(p => p.status === 'active' || p.status === 'approved')
     }
     return projects.filter(p => p.status === status)
   }
@@ -441,9 +450,18 @@ const Projects: FC = () => {
         </Alert>
       ) : (
         <>
-          <Button colorScheme="green" mb={8} onClick={onOpen}>
+          <Button colorScheme="green" mb={8} onClick={onOpen} isLoading={loading}>
             {t('projects.submit.button')}
           </Button>
+          
+          {loading && (
+            <Center mb={8}>
+              <VStack>
+                <Spinner size="lg" color="green.500" />
+                <Text>加载项目数据中...</Text>
+              </VStack>
+            </Center>
+          )}
           
           <Tabs variant="enclosed" colorScheme="green" mb={8}>
             <TabList>
@@ -575,7 +593,7 @@ const Projects: FC = () => {
             <Button variant="ghost" mr={3} onClick={onClose}>
               {t('projects.modal.cancel')}
             </Button>
-            <Button colorScheme="green" onClick={handleSubmitProject}>
+            <Button colorScheme="green" onClick={handleSubmitProject} isLoading={loading}>
               {t('projects.modal.submit')}
             </Button>
           </ModalFooter>
@@ -633,15 +651,28 @@ const Projects: FC = () => {
           
           <ModalFooter>
             {isVerifier && (
+              <HStack spacing={4} width="100%">
+                {selectedProject && selectedProject.status === 'pending' && (
+                  <Button 
+                  colorScheme="green" 
+                  onClick={() => handleReviewProject(true)}
+                  flex={1}
+                  isLoading={loading}
+                >
+                  {t('projects.review.approve') || '批准项目'}
+                </Button>
+              )}
               <Button 
                 colorScheme="red" 
                 onClick={() => handleReviewProject(false)}
-                width="100%"
+                flex={1}
+                isLoading={loading}
               >
                 {selectedProject && selectedProject.status === 'active' 
                   ? t('projects.delete.button') || '删除项目' 
-                  : t('projects.review.reject')}
+                  : t('projects.review.reject') || '拒绝项目'}
               </Button>
+              </HStack>
             )}
           </ModalFooter>
         </ModalContent>

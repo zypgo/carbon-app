@@ -33,32 +33,13 @@ import {
   VStack
 } from '@chakra-ui/react'
 import { useWeb3 } from '../contexts/Web3Context'
-import { getUserBalance, getUserTransactions, Transaction } from '../services/userDataService'
+import { createContractService, Project, Transaction, EmissionRecord } from '../services/contractService'
 import { ethers } from 'ethers'
 import { InfoIcon, RepeatIcon } from '@chakra-ui/icons'
 import { useLanguage } from '../contexts/LanguageContext'
 
-// 使用与Projects组件相同的本地存储键名
-const STORAGE_KEY = 'carbon_app_projects';
-
-// 项目接口定义 (与Projects组件保持一致)
-interface Project {
-  id: number
-  name: string
-  description: string
-  target: number
-  progress: number
-  duration: number
-  status: 'active' | 'completed' | 'pending' | 'rejected'
-  submitter?: string
-  submissionDate?: string
-  reviewDate?: string
-  reviewedBy?: string
-  reviewNotes?: string
-}
-
 const Profile: FC = () => {
-  const { account, connectWallet, provider } = useWeb3()
+  const { account, connectWallet, provider, contract, signer } = useWeb3()
   const { t } = useLanguage()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [balance, setBalance] = useState(0)
@@ -66,49 +47,59 @@ const Profile: FC = () => {
   const [isLoadingEthBalance, setIsLoadingEthBalance] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [userProjects, setUserProjects] = useState<Project[]>([])
+  const [userEmissions, setUserEmissions] = useState<EmissionRecord[]>([])
+  const [contractService, setContractService] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
   
+  // 初始化合约服务
+    useEffect(() => {
+      if (contract && signer && account && provider) {
+        const service = createContractService(contract, provider, signer, account)
+        setContractService(service)
+      }
+    }, [contract, provider, signer, account])
+
   // 加载用户数据
   useEffect(() => {
-    if (account) {
-      // 获取用户余额
-      const userBalance = getUserBalance(account)
+    if (account && contractService) {
+      loadUserData()
+    }
+  }, [account, contractService])
+
+  // 加载用户数据
+  const loadUserData = async () => {
+    if (!account || !contractService) return
+    
+    setIsLoading(true)
+    try {
+      // 获取用户碳信用余额
+      const userBalance = await contractService.getCarbonCredits(account)
       setBalance(userBalance)
       
       // 获取用户交易历史
-      const userTransactions = getUserTransactions(account)
+      const userTransactions = await contractService.getUserTransactions(account)
       setTransactions(userTransactions)
       
-      // 获取ETH余额
-      fetchEthBalance()
+      // 获取用户提交的项目
+      const projects = await contractService.getUserProjects(account)
+      setUserProjects(projects)
       
-      // 加载用户提交的项目
-      loadUserProjects()
-    }
-  }, [account])
-  
-  // 从localStorage加载项目并过滤出用户提交的项目
-  const loadUserProjects = () => {
-    if (!account) return;
-    
-    try {
-      const savedProjects = localStorage.getItem(STORAGE_KEY);
-      if (savedProjects) {
-        const allProjects: Project[] = JSON.parse(savedProjects);
-        
-        // 过滤出当前用户提交的项目
-        const filteredProjects = allProjects.filter(
-          project => project.submitter && 
-          (project.submitter.toLowerCase() === account.toLowerCase() || 
-           project.submitter.includes(account.substring(0, 6)))
-        );
-        
-        setUserProjects(filteredProjects);
-        console.log(`已加载用户项目: 找到${filteredProjects.length}个项目`);
-      }
+      // 获取用户排放记录
+      const emissions = await contractService.getUserEmissions(account)
+      setUserEmissions(emissions)
+      
+      // 获取ETH余额
+      await fetchEthBalance()
+      
+      setLastUpdated(new Date())
     } catch (error) {
-      console.error('加载用户项目失败:', error);
+      console.error('加载用户数据失败:', error)
+    } finally {
+      setIsLoading(false)
     }
-  };
+  }
+  
+
   
   // 获取ETH余额
   const fetchEthBalance = async () => {
@@ -135,13 +126,25 @@ const Profile: FC = () => {
   
   // 计算参与的项目数（使用实际提交的项目数量）
   const calculateProjectCount = () => {
-    return userProjects.length;
+    return userProjects.length
+  }
+  
+  // 计算总排放量
+  const calculateTotalEmissions = () => {
+    return userEmissions.reduce((total, emission) => total + emission.amount, 0)
+  }
+  
+  // 计算净碳足迹（排放量 - 抵消量）
+  const calculateNetCarbonFootprint = () => {
+    const totalEmissions = calculateTotalEmissions()
+    const totalOffset = calculateOffsetAmount()
+    return Math.max(0, totalEmissions - totalOffset)
   }
   
   // 计算总价值（所有交易的价值总和）
   const calculateTotalValue = () => {
     return transactions.reduce((total, tx) => {
-      return total + (tx.price * tx.amount)
+      return total + ((tx.price || 0) * tx.amount)
     }, 0)
   }
   
@@ -151,7 +154,7 @@ const Profile: FC = () => {
     if (transactions.length === 0) return 0
     
     const recentTransactions = transactions.slice(0, Math.min(5, transactions.length))
-    const avgPrice = recentTransactions.reduce((sum, tx) => sum + tx.price, 0) / recentTransactions.length
+    const avgPrice = recentTransactions.reduce((sum, tx) => sum + (tx.price || 0), 0) / recentTransactions.length
     
     return balance * avgPrice
   }
@@ -175,25 +178,26 @@ const Profile: FC = () => {
         {t('projects.card.target')}: {project.target} {t('common.tons')}
       </Text>
       
-      {(project.status === 'active' || project.status === 'completed') && (
+      {(project.status === 'approved') && (
         <>
           <Text fontWeight="bold" mb={1}>
             {t('projects.card.progress')}:
           </Text>
           <Progress 
-            value={(project.progress / project.target) * 100} 
-            colorScheme="green" 
-            mb={4}
+            value={project.progress && project.target ? (project.progress / project.target) * 100 : 0}
+            colorScheme="green"
+            size="sm"
+            mb={2}
           />
-          <Text fontSize="sm" mb={4}>
-            {project.progress} / {project.target} {t('common.tons')} 
-            ({Math.round((project.progress / project.target) * 100)}%)
+          <Text fontSize="sm" color="gray.600">
+            {project.progress || 0} / {project.target || 0} {t('common.tons')}
+            ({project.progress && project.target ? Math.round((project.progress / project.target) * 100) : 0}%)
           </Text>
         </>
       )}
       
       <Text fontWeight="bold" mb={2}>
-        {t('projects.card.duration')}: {project.duration} {t('common.months')}
+        {t('projects.card.duration')}: {project.duration || 0} {t('common.months')}
       </Text>
       
       <Flex justifyContent="space-between" alignItems="center">
@@ -205,11 +209,11 @@ const Profile: FC = () => {
       {/* 提交者和日期信息 */}
       <Divider my={3} />
       <VStack align="start" spacing={1} mt={3} fontSize="sm" color="gray.600">
-        {project.submissionDate && (
-          <Text>{t('projects.card.submitted')}: {project.submissionDate}</Text>
+        {project.submissionTime && (
+          <Text>{t('projects.card.submitted')}: {new Date(project.submissionTime * 1000).toLocaleDateString()}</Text>
         )}
-        {project.reviewDate && (
-          <Text>{t('projects.card.reviewed')}: {project.reviewDate}</Text>
+        {project.reviewTime && (
+          <Text>{t('projects.card.reviewed')}: {new Date(project.reviewTime * 1000).toLocaleDateString()}</Text>
         )}
         {project.reviewedBy && (
           <Text>审核者: {project.reviewedBy}</Text>
@@ -225,6 +229,7 @@ const Profile: FC = () => {
   const getStatusBadge = (status: string) => {
     switch(status) {
       case 'active':
+      case 'approved':
         return <Badge colorScheme="green">{t('projects.status.active')}</Badge>
       case 'completed':
         return <Badge colorScheme="blue">{t('projects.status.completed')}</Badge>
@@ -290,37 +295,51 @@ const Profile: FC = () => {
             </HStack>
           </Box>
 
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6} mb={8}>
-            <StatBox 
-              label={t('profile.stats.balance')}
-              value={balance.toString()} 
-              unit={t('common.credits')}
-              tooltip={t('profile.stats.balance.tooltip')}
-            />
-            <StatBox 
-              label={t('profile.stats.value')}
-              value={calculateCarbonCreditValue().toFixed(6)} 
-              unit={t('common.eth')}
-              tooltip={t('profile.stats.value.tooltip')}
-            />
-            <StatBox 
-              label={t('profile.stats.offset')}
-              value={calculateOffsetAmount().toString()} 
-              unit={t('common.tons')}
-              tooltip={t('profile.stats.offset.tooltip')}
-            />
-            <StatBox 
-              label={t('profile.stats.projects')}
-              value={calculateProjectCount().toString()} 
-              unit={t('common.projects')}
-              tooltip={t('profile.stats.projects.tooltip')}
-            />
-          </SimpleGrid>
+          {isLoading ? (
+            <Box textAlign="center" py={8}>
+              <Spinner size="xl" />
+              <Text mt={4}>加载用户数据中...</Text>
+            </Box>
+          ) : (
+            <SimpleGrid columns={{ base: 1, md: 2, lg: 5 }} spacing={6} mb={8}>
+              <StatBox 
+                label={t('profile.stats.balance')}
+                value={balance.toString()} 
+                unit={t('common.credits')}
+                tooltip={t('profile.stats.balance.tooltip')}
+              />
+              <StatBox 
+                label={t('profile.stats.value')}
+                value={calculateCarbonCreditValue().toFixed(6)} 
+                unit={t('common.eth')}
+                tooltip={t('profile.stats.value.tooltip')}
+              />
+              <StatBox 
+                label={t('profile.stats.offset')}
+                value={calculateOffsetAmount().toString()} 
+                unit={t('common.tons')}
+                tooltip={t('profile.stats.offset.tooltip')}
+              />
+              <StatBox 
+                label={t('profile.stats.projects')}
+                value={calculateProjectCount().toString()} 
+                unit={t('common.projects')}
+                tooltip={t('profile.stats.projects.tooltip')}
+              />
+              <StatBox 
+                label="净碳足迹"
+                value={calculateNetCarbonFootprint().toFixed(2)} 
+                unit={t('common.tons')}
+                tooltip="总排放量减去总抵消量"
+              />
+            </SimpleGrid>
+          )}
 
           <Tabs>
             <TabList>
               <Tab>{t('profile.tab.transactions')}</Tab>
               <Tab>{t('profile.tab.projects')}</Tab>
+              <Tab>排放记录</Tab>
               <Tab>{t('profile.tab.settings')}</Tab>
             </TabList>
 
@@ -353,7 +372,9 @@ const Profile: FC = () => {
                           <Td>
                             {tx.counterparty === 'market' 
                               ? t('profile.counterparty.market')
-                              : `${tx.counterparty.substring(0, 6)}...${tx.counterparty.substring(tx.counterparty.length - 4)}`
+                              : tx.counterparty
+                              ? `${tx.counterparty.substring(0, 6)}...${tx.counterparty.substring(tx.counterparty.length - 4)}`
+                              : '未知'
                             }
                           </Td>
                         </Tr>
@@ -375,7 +396,57 @@ const Profile: FC = () => {
                 )}
               </TabPanel>
               <TabPanel>
-                <Text>{t('profile.settings.coming')}</Text>
+                {userEmissions.length > 0 ? (
+                  <Box>
+                    <Heading size="md" mb={4}>我的排放记录</Heading>
+                    <Table variant="simple">
+                      <Thead>
+                        <Tr>
+                          <Th>排放源</Th>
+                          <Th isNumeric>排放量 (吨)</Th>
+                          <Th>记录日期</Th>
+                          <Th>验证状态</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {userEmissions.map((emission) => (
+                          <Tr key={emission.id}>
+                            <Td>{emission.source}</Td>
+                            <Td isNumeric>{emission.amount}</Td>
+                            <Td>{new Date(emission.timestamp * 1000).toLocaleDateString()}</Td>
+                            <Td>
+                              <Badge colorScheme={emission.verified ? 'green' : 'yellow'}>
+                                {emission.verified ? '已验证' : '待验证'}
+                              </Badge>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </Table>
+                    <Box mt={4} p={4} bg="gray.50" borderRadius="md">
+                      <Text fontWeight="bold">总排放量: {calculateTotalEmissions().toFixed(2)} 吨 CO₂</Text>
+                      <Text>总抵消量: {calculateOffsetAmount().toFixed(2)} 吨 CO₂</Text>
+                      <Text color={calculateNetCarbonFootprint() > 0 ? 'red.500' : 'green.500'}>
+                        净碳足迹: {calculateNetCarbonFootprint().toFixed(2)} 吨 CO₂
+                      </Text>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Text>暂无排放记录</Text>
+                )}
+              </TabPanel>
+              <TabPanel>
+                <VStack spacing={4} align="start">
+                  <Text>{t('profile.settings.coming')}</Text>
+                  <Button 
+                    colorScheme="blue" 
+                    onClick={loadUserData}
+                    isLoading={isLoading}
+                    disabled={!contractService}
+                  >
+                    刷新数据
+                  </Button>
+                </VStack>
               </TabPanel>
             </TabPanels>
           </Tabs>
@@ -410,4 +481,4 @@ const StatBox = ({ label, value, unit, tooltip }: StatBoxProps) => (
   </Box>
 )
 
-export default Profile 
+export default Profile

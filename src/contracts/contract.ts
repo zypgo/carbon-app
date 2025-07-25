@@ -95,4 +95,18 @@ export class CarbonContract {
       active: listing.active
     }))
   }
-} 
+
+  // 铸造碳信用（仅限授权用户）
+  async mintCredits(to: string, amount: number) {
+    this.checkContract()
+    const signer = await this.provider.getSigner()
+    const contractWithSigner = this.contract!.connect(signer) as any
+    
+    const tx = await contractWithSigner.mintCredits(
+      to,
+      ethers.parseEther(amount.toString())
+    )
+    
+    return await tx.wait()
+  }
+}
