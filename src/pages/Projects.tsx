@@ -321,116 +321,7 @@ const Projects: FC = () => {
     loadProjects()
   }
 
-  // 创建测试项目的函数
-  const createTestProject = async () => {
-    if (!contractService) {
-      console.error('❌ ContractService未初始化')
-      toast({
-        title: '错误',
-        description: 'ContractService未初始化，请先连接钱包',
-        status: 'error',
-        duration: 3000,
-        isClosable: true
-      })
-      return
-    }
 
-    if (!contract) {
-      console.error('❌ 合约对象未初始化')
-      toast({
-        title: '错误',
-        description: '合约对象未初始化，请检查网络连接',
-        status: 'error',
-        duration: 3000,
-        isClosable: true
-      })
-      return
-    }
-
-    try {
-      setLoading(true)
-      console.log('🧪 开始创建测试项目...')
-      console.log('📋 合约地址:', contract.target || contract.address)
-      console.log('👤 当前账户:', account)
-
-      const testProject = {
-        name: `测试项目 ${new Date().toLocaleString()}`,
-        description: '这是一个用于测试的碳减排项目，包含太阳能发电设施',
-        projectType: '可再生能源',
-        expectedCredits: 100
-      }
-
-      console.log('📝 测试项目数据:', testProject)
-
-      // 先检查当前项目数量
-      console.log('🔍 提交前检查当前项目数量...')
-      const beforeProjects = await contract.getAllProjects()
-      console.log('📊 提交前项目数量:', beforeProjects.length)
-
-      const txHash = await contractService.submitProject(
-        testProject.name,
-        testProject.description,
-        testProject.projectType,
-        testProject.expectedCredits
-      )
-
-      console.log('✅ 测试项目创建成功，交易哈希:', txHash)
-
-      toast({
-        title: '测试项目提交成功',
-        description: `交易哈希: ${txHash.substring(0, 10)}...\n正在等待区块确认...`,
-        status: 'success',
-        duration: 8000,
-        isClosable: true
-      })
-
-      // 等待交易确认
-      console.log('⏳ 等待交易确认...')
-      const receipt = await provider?.waitForTransaction(txHash)
-      console.log('✅ 交易已确认:', receipt)
-
-      // 检查提交后的项目数量
-      console.log('🔍 提交后检查项目数量...')
-      const afterProjects = await contract.getAllProjects()
-      console.log('📊 提交后项目数量:', afterProjects.length)
-
-      if (afterProjects.length > beforeProjects.length) {
-        console.log('🎉 项目成功添加到区块链')
-        toast({
-          title: '项目确认成功',
-          description: `项目已成功添加到区块链，项目数量从${beforeProjects.length}增加到${afterProjects.length}`,
-          status: 'success',
-          duration: 5000,
-          isClosable: true
-        })
-      } else {
-        console.warn('⚠️ 项目数量未增加，可能存在问题')
-        toast({
-          title: '警告',
-          description: '交易已确认但项目数量未增加，请检查合约状态',
-          status: 'warning',
-          duration: 5000,
-          isClosable: true
-        })
-      }
-
-      // 重新加载项目列表
-      console.log('🔄 重新加载项目列表...')
-      await loadProjects()
-
-    } catch (error: any) {
-      console.error('❌ 创建测试项目失败:', error)
-      toast({
-        title: '创建测试项目失败',
-        description: error.message || '未知错误',
-        status: 'error',
-        duration: 5000,
-        isClosable: true
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const [newProject, setNewProject] = useState({
     name: '',
@@ -961,21 +852,6 @@ const Projects: FC = () => {
           <HStack spacing={4} mb={8}>
             <Button colorScheme="green" onClick={onOpen} isLoading={loading}>
               {t('projects.submit.button')}
-            </Button>
-            <Button
-              colorScheme="orange"
-              onClick={createTestProject}
-              isLoading={loading}
-            >
-              创建测试项目
-            </Button>
-            <Button
-              colorScheme="blue"
-              variant="outline"
-              onClick={createTestProject}
-              isLoading={loading}
-            >
-              🧪 创建测试项目
             </Button>
           </HStack>
 
