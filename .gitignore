@@ -31,7 +31,39 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log* 
 node_modules
+
+# 环境变量和配置文件
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.example
+
+# API 密钥和私钥
+*.key
+*.pem
+*.p12
+*.pfx
+config/keys.js
+config/config.json
+secrets/
+
+# 钱包和私钥文件
+wallet.json
+private-key.txt
+mnemonic.txt
+*.wallet
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+# 临时文件
+*.tmp
+*.temp
+.cache/
 
 # Hardhat files
 /cache
