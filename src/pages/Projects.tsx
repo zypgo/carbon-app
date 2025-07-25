@@ -53,7 +53,7 @@ const PROHIBITED_WORDS = [
 ];
 
 interface Project {
-  id: number
+  id: string  // 修改为字符串类型，与合约返回的数据保持一致
   name: string
   description: string
   target: number
@@ -129,8 +129,8 @@ const Projects: FC = () => {
         const totalProjects = Number(stats.totalProjects)
         console.log('📊 项目总数:', totalProjects)
         
-        // 生成项目ID数组 (假设ID从0开始)
-        projectIds = Array.from({ length: totalProjects }, (_, i) => i)
+        // 生成项目ID数组 (合约中项目ID从1开始)
+        projectIds = Array.from({ length: totalProjects }, (_, i) => i + 1)
         console.log('📋 生成的项目ID列表:', projectIds)
       } catch (statsError) {
         console.warn('⚠️ 无法获取项目统计，尝试使用allProjectIds数组...')
