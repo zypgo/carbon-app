@@ -1,10 +1,10 @@
 {
   "CarbonCreditSystem": {
-    "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-    "network": "localhost"
+    "address": "0xE8873bf3973FD0Ab479D9dE1bA75ce555F9F6859",
+    "network": "sepolia"
   },
   "CarbonCreditNFT": {
-    "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-    "network": "localhost"
+    "address": "0x85DEB87deA3D6cE0D77E5608A11d2E2E5bF8F8fb",
+    "network": "sepolia"
   }
 }

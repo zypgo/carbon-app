@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { ethers } from 'ethers'
 import { useToast } from '@chakra-ui/react'
-import CarbonCreditSystemABI from '../contracts/CarbonCreditSystem.json'
+import CarbonCreditSystemContract from '../contracts/CarbonCreditSystem.json'
+const CarbonCreditSystemABI = CarbonCreditSystemContract.abi
 
 // 定义用户角色类型
 export enum UserRole {
@@ -23,6 +24,7 @@ interface Web3ContextType {
   switchRole: (role: UserRole) => void
   isVerifier: boolean
   verifierAddress: string
+  connectionError: string | null
 }
 
 // 创建上下文
@@ -32,13 +34,14 @@ const Web3Context = createContext<Web3ContextType>({
   provider: null,
   signer: null,
   contract: null,
-  connectWallet: async () => {},
+  connectWallet: async () => { },
   isConnecting: false,
-  resetConnection: () => {},
+  resetConnection: () => { },
   userRole: UserRole.User,
-  switchRole: () => {},
+  switchRole: () => { },
   isVerifier: false,
-  verifierAddress: '0xe36013952aeF04fA8d3F8EbFd52cA53D58020ee4'
+  verifierAddress: '0xe36013952aeF04fA8d3F8EbFd52cA53D58020ee4',
+  connectionError: null
 })
 
 // 自定义钩子，用于访问上下文
@@ -57,21 +60,67 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<UserRole>(UserRole.User)
-  
+
   const toast = useToast()
-  
+
   // 验证者地址
   const verifierAddress = '0xe36013952aeF04fA8d3F8EbFd52cA53D58020ee4'
+
+  // 合约地址和网络配置 - 仅支持Sepolia网络
+  const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || '0xE8873bf3973FD0Ab479D9dE1bA75ce555F9F6859'
   
-  // 合约地址和网络配置
-  const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || '0x1234567890123456789012345678901234567890'
+  // 调试：输出环境变量
+  console.log('🔧 环境变量检查:')
+  console.log('VITE_CONTRACT_ADDRESS:', import.meta.env.VITE_CONTRACT_ADDRESS)
+  console.log('实际使用的合约地址:', contractAddress)
   const SEPOLIA_CHAIN_ID = 11155111
-  const SEPOLIA_RPC_URL = import.meta.env.VITE_SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com'
   
+  // 多个备用RPC端点，避免API限制
+  const SEPOLIA_RPC_URLS = [
+    import.meta.env.VITE_SEPOLIA_RPC_URL,
+    'https://ethereum-sepolia-rpc.publicnode.com',
+    'https://sepolia.gateway.tenderly.co',
+    'https://rpc.sepolia.org',
+    'https://rpc2.sepolia.org',
+    'https://rpc.sepolia.dev',
+    'https://1rpc.io/sepolia'
+  ].filter(Boolean) // 过滤掉空值
+
+  // 测试RPC端点连接性
+  const testRpcEndpoint = async (rpcUrl: string): Promise<boolean> => {
+    try {
+      const testProvider = new ethers.JsonRpcProvider(rpcUrl)
+      // 设置超时时间为5秒
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('连接超时')), 5000)
+      )
+      await Promise.race([testProvider.getBlockNumber(), timeoutPromise])
+      return true
+    } catch (error) {
+      console.warn(`RPC端点 ${rpcUrl} 连接失败:`, error)
+      return false
+    }
+  }
+
+  // 获取可用的RPC端点
+  const getWorkingRpcUrl = async (): Promise<string> => {
+    console.log('🔍 正在测试RPC端点连接性...')
+    for (const rpcUrl of SEPOLIA_RPC_URLS) {
+      console.log(`测试RPC端点: ${rpcUrl}`)
+      const isWorking = await testRpcEndpoint(rpcUrl!)
+      if (isWorking) {
+        console.log(`✅ 使用RPC端点: ${rpcUrl}`)
+        return rpcUrl!
+      }
+    }
+    console.warn('⚠️ 所有RPC端点都不可用，使用默认端点')
+    return SEPOLIA_RPC_URLS[0] || 'https://ethereum-sepolia-rpc.publicnode.com'
+  }
+
   // 检查并切换到Sepolia网络
   const switchToSepolia = async () => {
     if (!window.ethereum) return false
-    
+
     try {
       // 尝试切换到Sepolia网络
       await window.ethereum.request({
@@ -83,6 +132,7 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
       // 如果网络不存在，尝试添加
       if (switchError.code === 4902) {
         try {
+          const workingRpcUrl = await getWorkingRpcUrl()
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
             params: [
@@ -94,7 +144,7 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
                   symbol: 'ETH',
                   decimals: 18,
                 },
-                rpcUrls: [SEPOLIA_RPC_URL],
+                rpcUrls: [workingRpcUrl],
                 blockExplorerUrls: ['https://sepolia.etherscan.io/'],
               },
             ],
@@ -109,7 +159,7 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
       return false
     }
   }
-  
+
   // 检查账户的角色
   const checkUserRole = (address: string): UserRole => {
     if (address.toLowerCase() === verifierAddress.toLowerCase()) {
@@ -117,7 +167,7 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
     }
     return UserRole.User
   }
-  
+
   // 切换用户角色
   const switchRole = (role: UserRole) => {
     // 只有验证者可以切换角色
@@ -140,7 +190,7 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
       })
     }
   }
-  
+
   // 重置连接状态
   const resetConnection = () => {
     setAccount(null)
@@ -150,11 +200,11 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
     setContract(null)
     setConnectionError(null)
     setUserRole(UserRole.User)
-    
+
     // 清除本地存储中的连接状态
     localStorage.removeItem('walletConnected')
     localStorage.removeItem('userRole')
-    
+
     toast({
       title: '连接已重置',
       description: '您可以重新尝试连接钱包',
@@ -163,7 +213,7 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
       isClosable: true,
     })
   }
-  
+
   // 连接钱包
   const connectWallet = async () => {
     if (!window.ethereum) {
@@ -176,44 +226,52 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
       })
       return
     }
-    
+
+    // 防止重复连接
+    if (isConnecting) {
+      return
+    }
+
     try {
       setIsConnecting(true)
       setConnectionError(null)
-      
+
+      // 优化：使用缓存的provider实例
+      let browserProvider = provider
+      if (!browserProvider) {
+        browserProvider = new ethers.BrowserProvider(window.ethereum)
+        setProvider(browserProvider)
+      }
+
       // 请求账户访问
-      const browserProvider = new ethers.BrowserProvider(window.ethereum)
-      
-      // 尝试获取账户，如果用户拒绝会抛出异常
       const accounts = await browserProvider.send('eth_requestAccounts', [])
-      
+
       if (accounts.length > 0) {
         const userAccount = accounts[0]
-        const networkData = await browserProvider.getNetwork()
+
+        // 优化：并行获取网络信息和签名者
+        const [networkData, userSigner] = await Promise.all([
+          browserProvider.getNetwork(),
+          browserProvider.getSigner()
+        ])
+
         const chainIdentifier = Number(networkData.chainId)
-        
-        // 检查是否在Sepolia网络
+
+        // 检查网络 - 仅支持Sepolia网络
         if (chainIdentifier !== SEPOLIA_CHAIN_ID) {
           toast({
             title: '网络错误',
             description: '请切换到Sepolia测试网络',
             status: 'warning',
-            duration: 5000,
+            duration: 3000,
             isClosable: true,
           })
-          
+
           const switched = await switchToSepolia()
           if (!switched) {
-            toast({
-              title: '网络切换失败',
-              description: '无法切换到Sepolia网络，请手动切换',
-              status: 'error',
-              duration: 5000,
-              isClosable: true,
-            })
             return
           }
-          
+
           // 重新获取网络信息
           const newNetworkData = await browserProvider.getNetwork()
           const newChainId = Number(newNetworkData.chainId)
@@ -221,46 +279,126 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
         } else {
           setChainId(chainIdentifier)
         }
-        
-        const userSigner = await browserProvider.getSigner()
+
+        // 批量更新状态
         setAccount(userAccount)
-        setProvider(browserProvider)
         setSigner(userSigner)
-        
+
         // 检查角色
         const role = checkUserRole(userAccount)
         setUserRole(role)
-        
-        // 保存角色到本地存储
         localStorage.setItem('userRole', role.toString())
-        
-        // 初始化合约
+
+        // 优化合约初始化
         try {
-          // 简化合约初始化，仅保存ABI和地址信息
+          console.log('🔧 开始初始化合约...')
+          console.log('📋 合约地址:', contractAddress)
+          console.log('👤 签名者地址:', await userSigner.getAddress())
+          console.log('🌐 当前网络ID:', chainIdentifier)
+          
+          // 验证合约地址格式
+          if (!ethers.isAddress(contractAddress)) {
+            throw new Error(`无效的合约地址: ${contractAddress}`)
+          }
+          
+          // 验证ABI
+          if (!CarbonCreditSystemABI || !Array.isArray(CarbonCreditSystemABI)) {
+            console.error('ABI验证失败:', CarbonCreditSystemABI)
+            throw new Error('合约ABI无效或未加载')
+          }
+          console.log('✅ ABI验证通过，包含', CarbonCreditSystemABI.length, '个方法')
+          
+          // 测试RPC连接状态
+          console.log('🔗 检查RPC连接状态...')
+          try {
+            const blockNumber = await browserProvider.getBlockNumber()
+            console.log('✅ RPC连接正常，当前区块:', blockNumber)
+          } catch (rpcError: any) {
+            console.error('❌ RPC连接失败:', rpcError)
+            
+            // 如果RPC连接失败，尝试使用备用端点
+            console.log('🔄 尝试使用备用RPC端点...')
+            const workingRpcUrl = await getWorkingRpcUrl()
+            
+            // 创建新的provider使用工作的RPC端点
+            const fallbackProvider = new ethers.JsonRpcProvider(workingRpcUrl)
+            const fallbackSigner = await fallbackProvider.getSigner(await userSigner.getAddress())
+            
+            // 更新provider和signer
+            setProvider(new ethers.BrowserProvider(window.ethereum))
+            setSigner(fallbackSigner)
+            
+            toast({
+              title: 'RPC端点已切换',
+              description: `已切换到备用RPC端点: ${workingRpcUrl}`,
+              status: 'info',
+              duration: 3000,
+              isClosable: true,
+            })
+          }
+          
           const carbonContract = new ethers.Contract(
             contractAddress,
             CarbonCreditSystemABI,
             userSigner
           )
+          
+          // 测试合约连接 - 尝试调用一个简单的只读方法
+          try {
+            console.log('🧪 测试合约连接...')
+            // 尝试获取合约的基本信息
+            const contractCode = await browserProvider.getCode(contractAddress)
+            if (contractCode === '0x') {
+              throw new Error('合约地址上没有部署代码，请检查合约地址是否正确')
+            }
+            console.log('✅ 合约代码验证通过')
+            
+            // 尝试调用合约方法来验证ABI匹配
+            // 注意：这里我们不调用具体方法，只是验证合约对象创建成功
+            console.log('✅ 合约对象创建成功')
+          } catch (testError: any) {
+             console.error('❌ 合约连接测试失败:', testError)
+             
+             // 检查是否是API限制问题
+             if (testError?.message?.includes('rate limit') || 
+                 testError?.message?.includes('429') ||
+                 testError?.message?.includes('quota')) {
+               throw new Error('API请求限制：当前RPC端点已达到使用限制，请稍后重试或配置自己的RPC端点')
+             }
+             
+             throw new Error(`合约连接测试失败: ${testError?.message || testError}`)
+           }
+          
           setContract(carbonContract)
-          
-          // 保存连接状态到本地存储
           localStorage.setItem('walletConnected', 'true')
-          
+          console.log('🎉 合约初始化完成')
+
           toast({
             title: '钱包已连接',
-            description: `已连接到账户: ${userAccount.substring(0, 6)}...${userAccount.substring(userAccount.length - 4)}，角色: ${role === UserRole.Verifier ? '审核者' : '普通用户'}`,
+            description: `账户: ${userAccount.substring(0, 6)}...${userAccount.substring(userAccount.length - 4)}`,
             status: 'success',
-            duration: 3000,
+            duration: 2000,
             isClosable: true,
           })
-        } catch (contractError) {
-          console.error('合约初始化失败:', contractError)
+        } catch (contractError: any) {
+          console.error('❌ 合约初始化失败:', contractError)
+          setConnectionError(`合约初始化失败: ${contractError?.message || contractError}`)
+          
+          // 根据错误类型提供不同的提示
+          let errorTitle = '合约初始化失败'
+          let errorDescription = contractError?.message || '连接成功但合约初始化失败'
+          
+          if (contractError?.message?.includes('API请求限制') || 
+              contractError?.message?.includes('RPC连接失败')) {
+            errorTitle = 'RPC连接问题'
+            errorDescription = '当前使用的公共RPC端点可能已达到限制。建议：\n1. 稍后重试\n2. 配置自己的Infura或Alchemy RPC端点'
+          }
+          
           toast({
-            title: '合约初始化失败',
-            description: '连接成功但合约初始化失败，部分功能可能不可用',
-            status: 'warning',
-            duration: 5000,
+            title: errorTitle,
+            description: errorDescription,
+            status: 'error',
+            duration: 8000,
             isClosable: true,
           })
         }
@@ -268,30 +406,28 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
     } catch (error: any) {
       console.error('连接钱包失败:', error)
       setConnectionError(error.message || '未知错误')
-      
-      // 检查是否是用户拒绝连接
+
+      let errorMessage = '连接失败'
       if (error.code === 4001) {
-        toast({
-          title: '连接被拒绝',
-          description: '您拒绝了钱包连接请求',
-          status: 'info',
-          duration: 5000,
-          isClosable: true,
-        })
-      } else {
-        toast({
-          title: '连接失败',
-          description: `连接钱包时发生错误: ${error.message || '未知错误'}`,
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        })
+        errorMessage = '用户拒绝了连接请求'
+      } else if (error.code === -32002) {
+        errorMessage = '请在钱包中确认连接请求'
+      } else if (error.message) {
+        errorMessage = error.message
       }
+
+      toast({
+        title: '连接失败',
+        description: errorMessage,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
     } finally {
       setIsConnecting(false)
     }
   }
-  
+
   // 监听账户变化
   useEffect(() => {
     if (window.ethereum) {
@@ -317,7 +453,7 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
           setUserRole(UserRole.User)
           localStorage.removeItem('walletConnected')
           localStorage.removeItem('userRole')
-          
+
           toast({
             title: '钱包已断开',
             description: '您的钱包连接已断开',
@@ -327,10 +463,10 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
           })
         }
       }
-      
+
       const handleChainChanged = (chainId: string) => {
         setChainId(Number(chainId))
-        
+
         toast({
           title: '网络已更改',
           description: '区块链网络已更改，页面将刷新',
@@ -338,21 +474,21 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
           duration: 3000,
           isClosable: true,
         })
-        
+
         // 网络变化时刷新页面以确保所有状态正确更新
         window.location.reload()
       }
-      
+
       const handleDisconnect = (error: { code: number; message: string }) => {
         console.log('MetaMask断开连接:', error)
         resetConnection()
       }
-      
+
       // 添加事件监听器
       window.ethereum.on('accountsChanged', handleAccountsChanged)
       window.ethereum.on('chainChanged', handleChainChanged)
       window.ethereum.on('disconnect', handleDisconnect)
-      
+
       // 清理函数
       return () => {
         if (window.ethereum.removeListener) {
@@ -363,29 +499,29 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
       }
     }
   }, [toast, provider])
-  
+
   // 自动连接钱包（如果之前已连接）
   useEffect(() => {
     const autoConnect = async () => {
       // 检查本地存储中的连接状态
       const wasConnected = localStorage.getItem('walletConnected') === 'true'
-      
+
       if (wasConnected && window.ethereum) {
         try {
           const browserProvider = new ethers.BrowserProvider(window.ethereum)
           const accounts = await browserProvider.listAccounts()
-          
+
           if (accounts.length > 0) {
             const userAccount = accounts[0].address
             const userSigner = await browserProvider.getSigner()
             const networkData = await browserProvider.getNetwork()
             const chainIdentifier = Number(networkData.chainId)
-            
+
             setAccount(userAccount)
             setChainId(chainIdentifier)
             setProvider(browserProvider)
             setSigner(userSigner)
-            
+
             // 恢复用户角色
             const savedRole = localStorage.getItem('userRole')
             if (savedRole) {
@@ -395,20 +531,72 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
               setUserRole(role)
               localStorage.setItem('userRole', role.toString())
             }
-            
+
             // 初始化合约
             try {
-              // 简化合约初始化，仅保存ABI和地址信息
+              console.log('🔧 自动连接 - 开始初始化合约...')
+              console.log('📋 合约地址:', contractAddress)
+              console.log('👤 签名者地址:', await userSigner.getAddress())
+              console.log('🌐 当前网络ID:', chainIdentifier)
+              
+              // 验证合约地址格式
+              if (!ethers.isAddress(contractAddress)) {
+                throw new Error(`无效的合约地址: ${contractAddress}`)
+              }
+              
+              // 验证ABI
+              if (!CarbonCreditSystemABI || !Array.isArray(CarbonCreditSystemABI)) {
+                throw new Error('合约ABI无效或未加载')
+              }
+              
+              // 测试RPC连接状态
+              console.log('🔗 自动连接 - 检查RPC连接状态...')
+              try {
+                const blockNumber = await browserProvider.getBlockNumber()
+                console.log('✅ 自动连接 - RPC连接正常，当前区块:', blockNumber)
+              } catch (rpcError: any) {
+                console.error('❌ 自动连接 - RPC连接失败:', rpcError)
+                throw new Error(`RPC连接失败，可能是API限制导致: ${rpcError?.message || rpcError}`)
+              }
+              
               const carbonContract = new ethers.Contract(
                 contractAddress,
                 CarbonCreditSystemABI,
                 userSigner
               )
-              setContract(carbonContract)
               
-              console.log('钱包自动连接成功')
-            } catch (contractError) {
-              console.error('合约初始化失败:', contractError)
+              // 测试合约连接
+              try {
+                console.log('🧪 自动连接 - 测试合约连接...')
+                const contractCode = await browserProvider.getCode(contractAddress)
+                if (contractCode === '0x') {
+                  throw new Error('合约地址上没有部署代码，请检查合约地址是否正确')
+                }
+                console.log('✅ 自动连接 - 合约代码验证通过')
+              } catch (testError: any) {
+                 console.error('❌ 自动连接 - 合约连接测试失败:', testError)
+                 
+                 // 检查是否是API限制问题
+                 if (testError?.message?.includes('rate limit') || 
+                     testError?.message?.includes('429') ||
+                     testError?.message?.includes('quota')) {
+                   throw new Error('API请求限制：当前RPC端点已达到使用限制，请稍后重试或配置自己的RPC端点')
+                 }
+                 
+                 throw new Error(`合约连接测试失败: ${testError?.message || testError}`)
+               }
+              
+              setContract(carbonContract)
+              console.log('🎉 自动连接 - 合约初始化完成')
+            } catch (contractError: any) {
+              console.error('❌ 自动连接 - 合约初始化失败:', contractError)
+              setConnectionError(`自动连接合约初始化失败: ${contractError?.message || contractError}`)
+              
+              // 如果是API限制问题，显示提示
+              if (contractError?.message?.includes('API请求限制') || 
+                  contractError?.message?.includes('RPC连接失败')) {
+                console.warn('⚠️ 检测到RPC API限制问题，建议配置自己的RPC端点')
+              }
             }
           } else {
             // 没有可用账户，清除连接状态
@@ -422,13 +610,13 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
         }
       }
     }
-    
+
     autoConnect()
   }, [])
-  
+
   // 计算衍生状态
   const isVerifier = userRole === UserRole.Verifier
-  
+
   return (
     <Web3Context.Provider
       value={{
@@ -443,7 +631,8 @@ export const Web3Provider = ({ children }: Web3ProviderProps) => {
         userRole,
         switchRole,
         isVerifier,
-        verifierAddress
+        verifierAddress,
+        connectionError
       }}
     >
       {children}

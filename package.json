@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 20",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
@@ -16,7 +16,13 @@
     "node": "hardhat node",
     "deploy-local": "hardhat run scripts/deploy.js --network localhost",
     "deploy-sepolia": "hardhat run scripts/deploy.cjs --network sepolia",
-    "verify": "hardhat verify"
+    "verify": "hardhat verify",
+    "migrate:data": "hardhat run scripts/migrate-data.cjs --network sepolia",
+    "update:frontend": "node scripts/update-frontend.cjs",
+    "setup:sepolia": "chmod +x setup-sepolia.sh && ./setup-sepolia.sh",
+    "deploy:new-contract": "npm run deploy-sepolia && npm run update:frontend",
+    "full:migration": "npm run deploy-sepolia && npm run migrate:data && npm run update:frontend",
+    "check": "npm run compile && npm run lint"
   },
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",

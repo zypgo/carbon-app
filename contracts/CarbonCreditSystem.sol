@@ -172,7 +172,14 @@ contract CarbonCreditSystem is AccessControl, ReentrancyGuard {
         uint256 totalCredits,
         string memory documentHash
     ) external onlyRole(PROVIDER_ROLE) {
-        require(bytes(name).length > 0, "Name cannot be empty");
+        // --- 新增的防护代码 ---
+        require(bytes(name).length > 0 && bytes(name).length < 100, "Project name invalid length");
+        require(bytes(description).length > 0 && bytes(description).length < 500, "Description invalid length");
+        require(bytes(projectType).length > 0 && bytes(projectType).length < 50, "Project type invalid length");
+        require(bytes(documentHash).length > 0 && bytes(documentHash).length < 100, "Document hash invalid length");
+        require(totalCredits > 0 && totalCredits <= 1000000, "Total credits out of range");
+        // --- 防护代码结束 ---
+        
         require(totalCredits > 0, "Total credits must be greater than 0");
         
         _projectIdCounter++;

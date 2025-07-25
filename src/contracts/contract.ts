@@ -14,7 +14,7 @@ export class CarbonContract {
     try {
       this.contract = new ethers.Contract(
         contractAddress,
-        CarbonCreditSystemABI,
+        CarbonCreditSystemABI.abi,
         this.provider
       )
     } catch (error) {

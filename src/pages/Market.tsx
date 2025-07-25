@@ -33,8 +33,10 @@ import {
   Tooltip,
   HStack,
   VStack,
-  Flex
+  Flex,
+  Icon
 } from '@chakra-ui/react'
+import { FaLeaf } from 'react-icons/fa'
 import { useWeb3 } from '../contexts/Web3Context'
 import { createContractService } from '../services/contractService'
 import { ethers } from 'ethers'
@@ -99,11 +101,18 @@ const Market: FC = () => {
   const loadUserBalance = async () => {
     if (contractService && account) {
       try {
+        console.log('🔄 开始加载用户碳信用余额...')
         const balance = await contractService.getUserBalance(account)
+        console.log('✅ 用户碳信用余额加载完成:', balance)
+        console.log('💰 用户碳信用余额:', balance)
         setUserBalance(balance)
       } catch (error) {
-        console.error('加载用户余额失败:', error)
+        console.error('❌ 加载用户余额失败:', error)
+        setUserBalance(0)
       }
+    } else {
+      console.warn('⚠️ 无法加载余额：contractService或account未初始化')
+      setUserBalance(0)
     }
   }
 
@@ -312,7 +321,7 @@ const Market: FC = () => {
         // 显示成功状态
         updateTransaction({
           status: 'success',
-          description: `成功上架 ${amount} 个碳信用！`
+          description: `成功上架碳信用！`
         })
         
         // 立即重新加载数据
@@ -328,8 +337,20 @@ const Market: FC = () => {
         
         // 显示详细的错误信息
         let errorMessage = '上架失败';
+        let errorDetails = '';
         
-        if (error.code) {
+        if (error.message) {
+          errorMessage = error.message;
+          
+          // 为常见错误提供解决方案
+          if (error.message.includes('可用碳信用不足')) {
+            errorDetails = '提示：您的碳信用可能分布在多个项目中，系统会自动选择信用最多的项目进行上架。';
+          } else if (error.message.includes('还没有任何已验证的碳信用')) {
+            errorDetails = '请先提交减碳项目并等待审核通过后再进行上架。';
+          } else if (error.message.includes('没有找到有可用信用的项目')) {
+            errorDetails = '请确保您有已审核通过的项目且项目中有可用的碳信用。';
+          }
+        } else if (error.code) {
           switch(error.code) {
             case 'ACTION_REJECTED':
             case 4001:
@@ -337,7 +358,8 @@ const Market: FC = () => {
               break;
             case 'INSUFFICIENT_FUNDS':
             case -32000:
-              errorMessage = '余额不足支付Gas费用';
+              errorMessage = 'ETH余额不足支付交易费用';
+              errorDetails = '请确保您的钱包中有足够的ETH来支付Gas费用。';
               break;
             case 'NETWORK_ERROR':
               errorMessage = '网络错误，请检查网络连接';
@@ -348,14 +370,12 @@ const Market: FC = () => {
             default:
               errorMessage = error.message || '未知错误';
           }
-        } else if (error.message) {
-          errorMessage = error.message;
         }
         
         // 更新交易状态为失败
         updateTransaction({
           status: 'error',
-          error: errorMessage
+          error: errorMessage + (errorDetails ? '\n\n' + errorDetails : '')
         })
       }
       
@@ -407,9 +427,22 @@ const Market: FC = () => {
       </Alert>
       
       {account && (
-        <Text mb={8} fontWeight="bold">
-          {t('market.balance')}: {userBalance} {t('common.credits')}
-        </Text>
+        <Box mb={8} p={4} bg="green.50" borderRadius="md" border="1px" borderColor="green.200">
+          <VStack align="start" spacing={2}>
+            <HStack>
+              <Icon as={FaLeaf} color="green.500" />
+              <Text fontWeight="bold" fontSize="lg">
+                我的碳信用余额: {userBalance.toFixed(2)} {t('common.credits')}
+              </Text>
+            </HStack>
+            <Text fontSize="sm" color="gray.600">
+              💡 这是您通过已验证的减碳项目获得的碳信用总数，可用于交易市场买卖
+            </Text>
+            <Text fontSize="sm" color="gray.600">
+              📊 余额来源：所有已批准项目中您拥有的碳信用之和
+            </Text>
+          </VStack>
+        </Box>
       )}
 
       {!account ? (

@@ -2,8 +2,8 @@
   "network": "sepolia",
   "deployer": "0xe36013952aeF04fA8d3F8EbFd52cA53D58020ee4",
   "contracts": {
-    "CarbonCreditNFT": "0x332C686bBbfa244892d160BdcCc6b9c66FA24b44",
-    "CarbonCreditSystem": "0x35998AC86d38aBeDF63dbb1c98695b0AB2F455C0"
+    "CarbonCreditNFT": "0x85DEB87deA3D6cE0D77E5608A11d2E2E5bF8F8fb",
+    "CarbonCreditSystem": "0xE8873bf3973FD0Ab479D9dE1bA75ce555F9F6859"
   },
-  "timestamp": "2025-07-24T07:53:42.814Z"
+  "timestamp": "2025-07-25T09:36:29.174Z"
 }
