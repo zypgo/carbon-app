@@ -158,12 +158,7 @@ const Navigation = () => {
             <NavLink to="/profile" isActive={location.pathname === '/profile'}>
               {t('nav.profile')}
             </NavLink>
-            {/* 调试页面 - 仅对验证者显示 */}
-            {isVerifier && (
-              <NavLink to="/debug" isActive={location.pathname === '/debug'}>
-                🔧 调试
-              </NavLink>
-            )}
+
           </HStack>
         </HStack>
 

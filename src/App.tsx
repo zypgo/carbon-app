@@ -10,7 +10,7 @@ import Market from './pages/Market'
 import Emissions from './pages/Emissions'
 import Projects from './pages/Projects'
 import Profile from './pages/Profile'
-import ProjectDebug from './pages/ProjectDebug'
+
 
 // 内部App组件，可以使用Web3Context
 function AppContent() {
@@ -42,7 +42,7 @@ function AppContent() {
           <Route path="/emissions" element={<Emissions />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/profile" element={<Profile />} />
-          <Route path="/debug" element={<ProjectDebug />} />
+
         </Routes>
       </Box>
     </Box>
