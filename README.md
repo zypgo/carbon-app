@@ -1,6 +1,9 @@
 # 碳信用交易DApp / Carbon Credit Trading DApp
 
+
 [English](#english) | [中文](#chinese)
+
+<img width="1899" height="820" alt="e4f19e3725af3f69e18f540b0" src="https://github.com/user-attachments/assets/89b0167b-429c-4f02-b4c0-26fc7cc43d56" />
 
 请访问以下地址体验项目吧！ https://zypgo.github.io/carbon-app/
 ---
