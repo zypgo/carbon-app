@@ -439,7 +439,7 @@ export class ContractService {
            // 使用找到的项目继续处理
            project = projectByNumber
          } else {
-           throw new Error(`项目 ${projectId} 不存在。可用项目: ${allProjects.map(p => (p.id || p[0]).toString()).join(', ')}`)
+           throw new Error(`项目 ${projectId} 不存在。可用项目: ${allProjects.map((p: any) => (p.id || p[0]).toString()).join(', ')}`)
          }
       }
 
@@ -539,7 +539,7 @@ export class ContractService {
           // 使用找到的项目继续处理
           project = projectByNumber
         } else {
-          throw new Error(`项目 ${projectId} 不存在。可用项目: ${allProjects.map(p => (p.id || p[0]).toString()).join(', ')}`)
+          throw new Error(`项目 ${projectId} 不存在。可用项目: ${allProjects.map((p: any) => (p.id || p[0]).toString()).join(', ')}`)
         }
       }
 
