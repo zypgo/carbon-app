@@ -1,4 +1,4 @@
-# 碳信用交易DApp / Carbon Credit Trading DApp
+# 碳信用交易DApp 2.0/ Carbon Credit Trading DApp
 
 
 [English](#english) | [中文](#chinese)
